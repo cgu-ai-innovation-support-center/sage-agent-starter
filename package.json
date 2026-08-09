@@ -1,0 +1,18 @@
+{
+  "name": "@cgu-sage/agent-starter",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Source-available starter templates for CGU SAGE self-hosted Agents",
+  "type": "module",
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "scripts": {
+    "doctor": "node scripts/doctor.mjs",
+    "release:verify": "node scripts/verify-release.mjs",
+    "test": "node scripts/validate.mjs",
+    "test:node": "node --test tests/node/*.test.mjs",
+    "test:python": "python3 -m unittest discover -s tests/python -p 'test_*.py'"
+  },
+  "license": "SEE LICENSE IN LICENSE"
+}

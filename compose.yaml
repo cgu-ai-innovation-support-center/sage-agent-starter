@@ -1,0 +1,46 @@
+services:
+  node-agent:
+    profiles: ["node"]
+    build:
+      context: .
+      dockerfile: node/Dockerfile
+    env_file: .env
+    environment:
+      AGENT_STATE_DB: /data/agent-state.sqlite
+      HOST: 0.0.0.0
+    ports:
+      - "127.0.0.1:8080:8080"
+    read_only: true
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: ["ALL"]
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    volumes:
+      - node-state:/data
+
+  fastapi-agent:
+    profiles: ["fastapi"]
+    build:
+      context: .
+      dockerfile: fastapi/Dockerfile
+    env_file: .env
+    environment:
+      AGENT_STATE_DB: /data/agent-state.sqlite
+      HOST: 0.0.0.0
+    ports:
+      - "127.0.0.1:8081:8080"
+    read_only: true
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: ["ALL"]
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    volumes:
+      - fastapi-state:/data
+
+volumes:
+  node-state: {}
+  fastapi-state: {}
