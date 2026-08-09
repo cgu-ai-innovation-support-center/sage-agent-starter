@@ -21,6 +21,7 @@ import {
 const MAX_BODY_BYTES = 256_000;
 const MAX_UPSTREAM_BYTES = 8_000_000;
 const MAX_ERROR_BYTES = 64_000;
+const RESPONSE_WRITE_TIMEOUT_MS = 60_000;
 const SHOWCASE_REASONING_HOLD_MS = 5_000;
 const listenHost = process.env.HOST?.trim() || "127.0.0.1";
 const listenPort = Number(process.env.PORT ?? "8080");
@@ -69,6 +70,40 @@ function continuationLost(response) {
       code: "previous_response_not_found",
       message: "The Agent cannot continue from that response ID.",
     },
+  });
+}
+
+async function writeFrame(response, frame) {
+  if (response.write(frame)) return;
+  await new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      cleanup();
+      response.destroy();
+      reject(new Error("client did not accept response data before the deadline"));
+    }, RESPONSE_WRITE_TIMEOUT_MS);
+    timeout.unref();
+    const cleanup = () => {
+      clearTimeout(timeout);
+      response.off("drain", onDrain);
+      response.off("close", onClose);
+      response.off("error", onError);
+    };
+    const onDrain = () => {
+      cleanup();
+      resolve();
+    };
+    const onClose = () => {
+      cleanup();
+      reject(new Error("client disconnected while receiving response"));
+    };
+    const onError = (error) => {
+      cleanup();
+      reject(error);
+    };
+    response.once("drain", onDrain);
+    response.once("close", onClose);
+    response.once("error", onError);
+    if (response.destroyed) onClose();
   });
 }
 
@@ -176,7 +211,7 @@ const server = createServer(async (request, response) => {
           "cache-control": "no-store",
           "content-type": "text/event-stream",
         });
-        response.write(`data: ${JSON.stringify({
+        await writeFrame(response, `data: ${JSON.stringify({
           type: "response.output_text.delta",
           delta: "SAGE_SHOWCASE_PARTIAL_MUST_NOT_PERSIST",
         })}\n\n`);
@@ -190,7 +225,7 @@ const server = createServer(async (request, response) => {
         "content-type": "text/event-stream",
       });
       for (const event of showcaseEvents(fileId, responseId)) {
-        response.write(`data: ${JSON.stringify(event)}\n\n`);
+        await writeFrame(response, `data: ${JSON.stringify(event)}\n\n`);
         if (event.type === "response.output_item.added" && event.item?.id === "showcase-tool-item-2") {
           await new Promise((resolve) => setTimeout(resolve, SHOWCASE_REASONING_HOLD_MS));
         }
@@ -256,22 +291,24 @@ const server = createServer(async (request, response) => {
       "content-type": "text/event-stream",
     });
     const artifact = artifactEvent();
-    if (artifact) response.write(artifact);
+    if (artifact) await writeFrame(response, artifact);
     const gate = new DurableResponseStreamGate();
     let transferred = 0;
     for await (const chunk of upstream.body) {
       transferred += chunk.length;
       if (transferred > MAX_UPSTREAM_BYTES) throw new Error("upstream response too large");
-      for (const frame of gate.push(chunk)) response.write(frame);
+      for (const frame of gate.push(chunk)) await writeFrame(response, frame);
     }
     const completion = gate.finish();
-    for (const frame of completion.outputFrames) response.write(frame);
+    for (const frame of completion.outputFrames) await writeFrame(response, frame);
+    const terminalFrames = [];
     commitThenReleaseTerminal({
       completion,
       conversationId: contract.conversationId,
       state,
-      write: (frame) => response.write(frame),
+      write: (frame) => terminalFrames.push(frame),
     });
+    for (const frame of terminalFrames) await writeFrame(response, frame);
     response.end();
   } catch (error) {
     status = Number.isInteger(error?.status) ? error.status : 500;

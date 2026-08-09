@@ -104,8 +104,13 @@ class StateStoreTests(unittest.TestCase):
         failed.push(
             b'data: {"type":"response.created","response":{"id":"resp-2"}}\n\n'
         )
-        failed_output = failed.push(b'data: {"type":"response.failed"}\n\n')
+        failed_output = failed.push(
+            b'data: {"type":"response.failed","error":{"message":"secret at '
+            b'https://internal.example.invalid"}}\n\n'
+        )
         self.assertTrue(any(b"response.failed" in frame for frame in failed_output))
+        self.assertFalse(any(b"secret" in frame for frame in failed_output))
+        self.assertFalse(any(b"internal.example" in frame for frame in failed_output))
         with self.assertRaisesRegex(ValueError, "followed response.failed"):
             failed.push(
                 b'data: {"type":"response.completed","response":{"id":"resp-2"}}\n\n'
@@ -124,6 +129,55 @@ class StateStoreTests(unittest.TestCase):
             ),
             (),
         )
+
+        header_failure = DurableResponseStreamGate()
+        sanitized_header_failure = header_failure.push(
+            b'event: response.failed\ndata: {"message":"secret at '
+            b'https://internal.example.invalid"}\n\n'
+        )
+        self.assertFalse(any(b"secret" in frame for frame in sanitized_header_failure))
+        self.assertTrue(
+            any(b"response.failed" in frame for frame in sanitized_header_failure)
+        )
+        empty_header_failure = DurableResponseStreamGate()
+        self.assertEqual(
+            empty_header_failure.push(
+                b"event: response.failed\ndata: [DONE]\n\n"
+            ),
+            (b'data: {"type":"response.failed"}\n\n',),
+        )
+        with self.assertRaisesRegex(ValueError, "followed response.failed"):
+            empty_header_failure.push(
+                b'data: {"type":"response.completed",'
+                b'"response":{"id":"resp-late"}}\n\n'
+            )
+        with self.assertRaisesRegex(ValueError, "does not match"):
+            DurableResponseStreamGate().push(
+                b'event: response.completed\ndata: {"type":"response.output_text.delta",'
+                b'"delta":"x"}\n\n'
+            )
+        with self.assertRaisesRegex(ValueError, r"not allowed with \[DONE\]"):
+            DurableResponseStreamGate().push(
+                b"event: response.completed\ndata: [DONE] \n\n"
+            )
+        with self.assertRaisesRegex(ValueError, "non-empty type"):
+            DurableResponseStreamGate().push(
+                b'data: {"error":{"message":"secret at '
+                b'https://internal.example.invalid"}}\n\n'
+            )
+
+        duplicate_type = DurableResponseStreamGate()
+        with self.assertRaisesRegex(ValueError, "valid JSON"):
+            duplicate_type.push(
+                b'data: {"type":"response.failed",'
+                b'"type":"response.output_text.delta",'
+                b'"delta":"secret at https://internal.example.invalid"}\n\n'
+            )
+        with self.assertRaisesRegex(ValueError, "followed response.failed"):
+            duplicate_type.push(
+                b'data: {"type":"response.completed",'
+                b'"response":{"id":"resp-late"}}\n\n'
+            )
 
         early_done = DurableResponseStreamGate()
         early_done.push(b"data: [DONE]\n\n")

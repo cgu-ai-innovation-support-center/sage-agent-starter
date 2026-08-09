@@ -2,8 +2,8 @@
   "schema_version": 1,
   "starter": {
     "name": "cgu-ai-innovation-support-center/sage-agent-starter",
-    "version": "0.1.1",
-    "release_tag": "v0.1.1"
+    "version": "0.1.2",
+    "release_tag": "v0.1.2"
   },
   "sage": {
     "repository": "cgu-ai-innovation-support-center/sage",
@@ -11,7 +11,7 @@
     "profile": "stateful-v1",
     "contract_revision": "2026-08-10",
     "contract_file": "contracts/stateful-v1.md",
-    "contract_sha256": "sha256:caca267a47996cecc5565829a098f523053376b3202d7939e67e89dad4b8564a"
+    "contract_sha256": "sha256:0e09ef3a5bc6671f172a6269160f8f8602cd560c5ce85c90f7937e1c3d325f03"
   },
   "templates": [
     {

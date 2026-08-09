@@ -93,8 +93,13 @@ test("stream gate withholds completion until state is durably recorded", () => {
 
   const failed = new DurableResponseStreamGate();
   failed.push(Buffer.from(`data: ${JSON.stringify({ type: "response.created", response: { id: "resp-2" } })}\n\n`));
-  const failedOutput = failed.push(Buffer.from(`data: ${JSON.stringify({ type: "response.failed" })}\n\n`));
+  const failedOutput = failed.push(Buffer.from(`data: ${JSON.stringify({
+    type: "response.failed",
+    error: { message: "secret at https://internal.example.invalid" },
+  })}\n\n`));
   assert.equal(failedOutput.some((frame) => frame.includes("response.failed")), true);
+  assert.equal(failedOutput.some((frame) => frame.includes("secret")), false);
+  assert.equal(failedOutput.some((frame) => frame.includes("internal.example")), false);
   assert.throws(
     () => failed.push(Buffer.from(`data: ${JSON.stringify({ type: "response.completed", response: { id: "resp-2" } })}\n\n`)),
     /followed response.failed/,
@@ -108,6 +113,56 @@ test("stream gate withholds completion until state is durably recorded", () => {
     write: (frame) => failedRelease.push(frame),
   });
   assert.deepEqual(failedRelease, []);
+
+  const headerFailure = new DurableResponseStreamGate();
+  const sanitizedHeaderFailure = headerFailure.push(Buffer.from(
+    "event: response.failed\ndata: {\"message\":\"secret at https://internal.example.invalid\"}\n\n",
+  ));
+  assert.equal(sanitizedHeaderFailure.some((frame) => frame.includes("secret")), false);
+  assert.equal(sanitizedHeaderFailure.some((frame) => frame.includes("response.failed")), true);
+  const emptyHeaderFailure = new DurableResponseStreamGate();
+  assert.equal(
+    emptyHeaderFailure.push(Buffer.from("event: response.failed\ndata: [DONE]\n\n"))[0],
+    `data: ${JSON.stringify({ type: "response.failed" })}\n\n`,
+  );
+  assert.throws(
+    () => emptyHeaderFailure.push(Buffer.from(
+      "data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp-late\"}}\n\n",
+    )),
+    /followed response.failed/,
+  );
+  assert.throws(
+    () => new DurableResponseStreamGate().push(Buffer.from(
+      "event: response.completed\ndata: {\"type\":\"response.output_text.delta\",\"delta\":\"x\"}\n\n",
+    )),
+    /does not match/,
+  );
+  assert.throws(
+    () => new DurableResponseStreamGate().push(Buffer.from(
+      "event: response.completed\ndata: [DONE] \n\n",
+    )),
+    /not allowed with \[DONE\]/,
+  );
+  assert.throws(
+    () => new DurableResponseStreamGate().push(Buffer.from(
+      "data: {\"error\":{\"message\":\"secret at https://internal.example.invalid\"}}\n\n",
+    )),
+    /non-empty type/,
+  );
+
+  const duplicateType = new DurableResponseStreamGate();
+  assert.throws(
+    () => duplicateType.push(Buffer.from(
+      "data: {\"type\":\"response.failed\",\"type\":\"response.output_text.delta\",\"delta\":\"secret at https://internal.example.invalid\"}\n\n",
+    )),
+    /valid JSON/,
+  );
+  assert.throws(
+    () => duplicateType.push(Buffer.from(
+      "data: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp-late\"}}\n\n",
+    )),
+    /followed response.failed/,
+  );
 
   const earlyDone = new DurableResponseStreamGate();
   earlyDone.push(Buffer.from("data: [DONE]\n\n"));

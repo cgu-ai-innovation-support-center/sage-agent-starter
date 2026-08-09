@@ -68,6 +68,7 @@ def validate_platform_origin(value: str) -> str:
     if (
         parsed.scheme != "https"
         or not parsed.netloc
+        or not parsed.hostname
         or parsed.username
         or parsed.password
         or parsed.params
@@ -97,6 +98,7 @@ def _model_access(
     if (
         parsed.scheme != "https"
         or not parsed.netloc
+        or not parsed.hostname
         or parsed.username
         or parsed.password
         or parsed.params
@@ -287,6 +289,7 @@ def validate_external_artifact_url(raw: object) -> str:
     if (
         parsed.scheme != "https"
         or not parsed.netloc
+        or not parsed.hostname
         or parsed.username
         or parsed.password
         or parsed.params

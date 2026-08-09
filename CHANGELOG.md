@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.1.2 - 2026-08-10
+
+- Replace provider-supplied SSE failure fields with one fixed generic terminal
+  event so upstream error details cannot reach the browser or logs.
+- Reject malformed, untyped, mismatched, and duplicate-key SSE events before
+  they can advance durable continuation state.
+- Bound Node response backpressure and align FastAPI URL host validation with
+  the Node template.
+
 ## 0.1.1 - 2026-08-10
 
 - Treat an early provider failure, incomplete event, error, or `[DONE]` as an

@@ -2,7 +2,7 @@
 
 Contract revision: `2026-08-10`
 
-This file is the public Agent-author contract for Starter release `v0.1.1`.
+This file is the public Agent-author contract for Starter release `v0.1.2`.
 The SAGE platform remains authoritative for authorization, Budgets, safe
 egress, canonical transcripts, and runtime enforcement.
 
@@ -78,4 +78,6 @@ Cancellation closes the upstream request. Withhold the terminal
 has been committed durably; a persistence failure closes an incomplete stream
 without releasing that frame. A provider `[DONE]`, failure, incomplete, or
 error terminal observed before `response.completed` is irreversible and must
-never be followed by a persisted completion.
+never be followed by a persisted completion. Replace provider-supplied SSE
+failure, incomplete, and error frames with one fixed generic `response.failed`
+event so their fields cannot disclose upstream details.

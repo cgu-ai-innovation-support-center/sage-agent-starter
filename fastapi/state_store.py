@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 ORDINARY_RETENTION_SECONDS = 30 * 24 * 60 * 60
+GENERIC_FAILURE_FRAME = b'data: {"type":"response.failed"}\n\n'
 
 
 def _bounded_id(value: object, name: str) -> str:
@@ -192,12 +193,30 @@ class DurableResponseStreamGate:
         if len(frame) > self._maximum:
             raise ValueError("upstream SSE frame is too large")
         serialized = f"{frame}\n\n".encode()
+        event_names = [
+            line[6:].strip()
+            for line in frame.splitlines()
+            if line.startswith("event:")
+        ]
+        if len(event_names) > 1 or any(not name for name in event_names):
+            raise ValueError("invalid SSE event field")
+        event_name = event_names[0] if event_names else None
+        failure_types = {"error", "response.failed", "response.incomplete"}
+        if event_name in failure_types:
+            if self._terminal_state != "open":
+                raise ValueError(
+                    f"substantive SSE event followed response.{self._terminal_state}"
+                )
+            self._terminal_state = "failed"
+            return [GENERIC_FAILURE_FRAME]
         data = "\n".join(
             line[5:].lstrip()
             for line in frame.splitlines()
             if line.startswith("data:")
         )
-        if data == "[DONE]":
+        if data.strip() == "[DONE]":
+            if event_name is not None:
+                raise ValueError("SSE event field is not allowed with [DONE]")
             if self._terminal_state == "open":
                 self._terminal_state = "failed"
             if self._terminal_state == "completed":
@@ -205,23 +224,38 @@ class DurableResponseStreamGate:
                 return []
             return [serialized]
         if not data:
+            if event_name is not None:
+                raise ValueError("SSE event field requires JSON data")
             if self._terminal_state == "completed":
                 self._terminal_suffix.append(serialized)
                 return []
-            return [serialized]
-        try:
-            event = json.loads(data)
-        except json.JSONDecodeError:
-            if self._terminal_state != "open":
-                raise ValueError(
-                    f"substantive SSE data followed response.{self._terminal_state}"
-                )
             return [serialized]
         if self._terminal_state != "open":
             raise ValueError(
                 f"substantive SSE event followed response.{self._terminal_state}"
             )
+
+        def reject_duplicate_keys(pairs: list[tuple[str, object]]) -> dict[str, object]:
+            result: dict[str, object] = {}
+            for key, value in pairs:
+                if key in result:
+                    raise ValueError("duplicate JSON object key")
+                result[key] = value
+            return result
+
+        try:
+            event = json.loads(data, object_pairs_hook=reject_duplicate_keys)
+        except (json.JSONDecodeError, ValueError):
+            self._terminal_state = "failed"
+            raise ValueError("SSE data must be valid JSON")
         event_type = event.get("type") if isinstance(event, dict) else None
+        if not isinstance(event_type, str) or not event_type:
+            raise ValueError("SSE JSON event requires a non-empty type")
+        if event_type in failure_types:
+            self._terminal_state = "failed"
+            return [GENERIC_FAILURE_FRAME]
+        if event_name is not None and event_name != event_type:
+            raise ValueError("SSE event field does not match data type")
         response = event.get("response") if isinstance(event, dict) else None
         response_id = response.get("id") if isinstance(response, dict) else None
         valid_id = (
@@ -244,8 +278,6 @@ class DurableResponseStreamGate:
             self._terminal_frame = serialized
             self._terminal_state = "completed"
             return []
-        if event_type in {"error", "response.failed", "response.incomplete"}:
-            self._terminal_state = "failed"
         return [serialized]
 
 

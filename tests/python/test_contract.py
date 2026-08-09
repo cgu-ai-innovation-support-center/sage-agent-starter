@@ -166,6 +166,8 @@ class ContractTests(unittest.TestCase):
             validate_external_artifact_url(
                 "https://user:secret@files.example.edu/report.pdf"
             )
+        with self.assertRaisesRegex(ContractError, "credential-free HTTPS"):
+            validate_external_artifact_url("https://:443/report.pdf")
 
     def test_platform_origin_is_canonical_ascii(self) -> None:
         self.assertEqual(

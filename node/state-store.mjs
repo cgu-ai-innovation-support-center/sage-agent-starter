@@ -3,6 +3,7 @@ import { dirname, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
 export const ORDINARY_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
+const GENERIC_FAILURE_FRAME = `data: ${JSON.stringify({ type: "response.failed" })}\n\n`;
 
 function boundedId(value, name) {
   if (
@@ -169,38 +170,64 @@ export class DurableResponseStreamGate {
       throw new Error("upstream SSE frame is too large");
     }
     const serialized = `${frame}\n\n`;
+    const eventNames = frame
+      .split("\n")
+      .filter((line) => line.startsWith("event:"))
+      .map((line) => line.slice(6).trim());
+    if (eventNames.length > 1 || eventNames.some((name) => !name)) {
+      throw new Error("invalid SSE event field");
+    }
+    const eventName = eventNames[0] ?? null;
+    const failureTypes = new Set(["error", "response.failed", "response.incomplete"]);
+    if (eventName && failureTypes.has(eventName)) {
+      if (this.terminalState !== "open") {
+        throw new Error(`substantive SSE event followed response.${this.terminalState}`);
+      }
+      this.terminalState = "failed";
+      return [GENERIC_FAILURE_FRAME];
+    }
     const data = frame
       .split("\n")
       .filter((line) => line.startsWith("data:"))
       .map((line) => line.slice(5).trimStart())
       .join("\n");
-    if (data === "[DONE]") {
+    if (data.trim() === "[DONE]") {
+      if (eventName) throw new Error("SSE event field is not allowed with [DONE]");
       if (this.terminalState === "open") this.terminalState = "failed";
       if (this.terminalState === "completed") this.terminalSuffix.push(serialized);
       else return [serialized];
       return [];
     }
     if (!data) {
+      if (eventName) throw new Error("SSE event field requires JSON data");
       if (this.terminalState === "completed") this.terminalSuffix.push(serialized);
       else return [serialized];
       return [];
     }
-    let event;
-    try {
-      event = JSON.parse(data);
-    } catch {
-      if (this.terminalState !== "open") {
-        throw new Error(`substantive SSE data followed response.${this.terminalState}`);
-      }
-      return [serialized];
-    }
     if (this.terminalState !== "open") {
       throw new Error(`substantive SSE event followed response.${this.terminalState}`);
     }
-    if (event?.type === "response.created") {
+    let event;
+    try {
+      assertNoDuplicateJsonObjectKeys(data);
+      event = JSON.parse(data);
+    } catch {
+      this.terminalState = "failed";
+      throw new Error("SSE data must be valid JSON");
+    }
+    const dataType = typeof event?.type === "string" ? event.type : null;
+    if (!dataType) throw new Error("SSE JSON event requires a non-empty type");
+    if (dataType && failureTypes.has(dataType)) {
+      this.terminalState = "failed";
+      return [GENERIC_FAILURE_FRAME];
+    }
+    if (eventName && eventName !== dataType) {
+      throw new Error("SSE event field does not match data type");
+    }
+    if (dataType === "response.created") {
       this.createdId = validResponseId(event.response?.id);
       if (!this.createdId) throw new Error("invalid response.created ID");
-    } else if (event?.type === "response.completed") {
+    } else if (dataType === "response.completed") {
       const completedId = validResponseId(event.response?.id);
       if (!completedId || (this.createdId && this.createdId !== completedId)) {
         throw new Error("invalid response.completed ID");
@@ -209,10 +236,48 @@ export class DurableResponseStreamGate {
       this.terminalFrame = serialized;
       this.terminalState = "completed";
       return [];
-    } else if (["error", "response.failed", "response.incomplete"].includes(event?.type)) {
-      this.terminalState = "failed";
     }
     return [serialized];
+  }
+}
+
+function assertNoDuplicateJsonObjectKeys(source) {
+  const containers = [];
+  for (let index = 0; index < source.length; index += 1) {
+    const character = source[index];
+    if (character === "{") {
+      containers.push(new Set());
+      continue;
+    }
+    if (character === "[") {
+      containers.push(null);
+      continue;
+    }
+    if (character === "}" || character === "]") {
+      containers.pop();
+      continue;
+    }
+    if (character !== '"') continue;
+
+    const start = index;
+    index += 1;
+    while (index < source.length) {
+      if (source[index] === "\\") {
+        index += 2;
+        continue;
+      }
+      if (source[index] === '"') break;
+      index += 1;
+    }
+    let next = index + 1;
+    while (next < source.length && /\s/u.test(source[next])) next += 1;
+    if (source[next] !== ":") continue;
+
+    const keys = containers.at(-1);
+    if (!(keys instanceof Set)) continue;
+    const key = JSON.parse(source.slice(start, index + 1));
+    if (keys.has(key)) throw new Error("duplicate JSON object key");
+    keys.add(key);
   }
 }
 
