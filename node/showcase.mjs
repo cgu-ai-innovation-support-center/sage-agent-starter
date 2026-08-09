@@ -4,6 +4,24 @@ const SHOWCASE_PNG = Buffer.from(
   "iVBORw0KGgoAAAANSUhEUgAAAGAAAABAAgMAAACYWpqdAAAADFBMVEX6zBU7gvYixV70P15tMCB3AAAACXBIWXMAAAsTAAALEwEAmpwYAAAAIUlEQVQ4y2P4jwRWIQGGUYlRiVEJhlAkwIAMRiVGJUYlADtm/R+uhhRzAAAAAElFTkSuQmCC",
   "base64"
 );
+const MAX_ARTIFACT_RESPONSE_BYTES = 64_000;
+
+async function readBoundedJson(response) {
+  const chunks = [];
+  let transferred = 0;
+  for await (const chunk of response.body ?? []) {
+    transferred += chunk.length;
+    if (transferred > MAX_ARTIFACT_RESPONSE_BYTES) {
+      throw new Error("artifact upload response too large");
+    }
+    chunks.push(Buffer.from(chunk));
+  }
+  try {
+    return JSON.parse(Buffer.concat(chunks).toString("utf8"));
+  } catch {
+    return null;
+  }
+}
 
 export function showcaseResponseId(invocationKey, conversationId) {
   return `showcase_${createHmac("sha256", invocationKey)
@@ -24,7 +42,7 @@ export async function uploadShowcaseArtifact(artifact, fetchImpl = fetch) {
     redirect: "error",
     signal: AbortSignal.timeout(30_000),
   });
-  const payload = await response.json().catch(() => null);
+  const payload = await readBoundedJson(response);
   if (
     !response.ok ||
     typeof payload?.file_id !== "string" ||

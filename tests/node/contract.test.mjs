@@ -6,6 +6,7 @@ import {
   validatePlatformContract,
   validatePlatformOrigin,
 } from "../../node/contract.mjs";
+import { uploadShowcaseArtifact } from "../../node/showcase.mjs";
 
 const conversationId = "11111111-1111-4111-8111-111111111111";
 const platformOrigin = "https://sage.example.edu";
@@ -166,4 +167,17 @@ test("requires a canonical ASCII SAGE platform origin", () => {
   assert.equal(validatePlatformOrigin(platformOrigin), platformOrigin);
   assert.throws(() => validatePlatformOrigin("https://sage.example.edu/path"), /platform origin/);
   assert.throws(() => validatePlatformOrigin("https://faß.de"), /platform origin/);
+});
+
+test("bounds the exact-origin showcase Artifact response", async () => {
+  await assert.rejects(
+    () => uploadShowcaseArtifact(
+      {
+        token: `af1.${"b".repeat(43)}`,
+        uploadUrl: "https://sage.example.edu/api/agents/artifacts",
+      },
+      async () => new Response("x".repeat(64_001), { status: 200 }),
+    ),
+    /response too large/,
+  );
 });
