@@ -6,9 +6,9 @@ domain, TLS, state, secrets, monitoring, patching, and recovery.
 ## Container
 
 ```bash
-docker build --pull -f node/Dockerfile -t my-sage-agent:v0.1.0 .
+docker build --pull -f node/Dockerfile -t my-sage-agent:v0.1.1 .
 # or
-docker build --pull -f fastapi/Dockerfile -t my-sage-agent:v0.1.0 .
+docker build --pull -f fastapi/Dockerfile -t my-sage-agent:v0.1.1 .
 ```
 
 Run as a non-root user, drop all capabilities, use a read-only filesystem, and

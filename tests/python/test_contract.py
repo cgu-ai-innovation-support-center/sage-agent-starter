@@ -11,6 +11,7 @@ from contract import (  # noqa: E402
     is_previous_response_error,
     validate_external_artifact_url,
     validate_platform_contract,
+    validate_platform_origin,
 )
 
 
@@ -117,6 +118,22 @@ class ContractTests(unittest.TestCase):
                 ),
                 self.platform_origin,
             )
+        with self.assertRaisesRegex(ContractError, "model proxy URL"):
+            validate_platform_contract(
+                self.headers,
+                self.request(
+                    [{"content": "first", "role": "user"}],
+                    artifact_access={
+                        **self.artifact_access,
+                        "upload_url": "https://fass.de/api/agents/artifacts",
+                    },
+                    model_access={
+                        **self.model_access,
+                        "base_url": "https://faß.de/api/agents/model-proxy/v1",
+                    },
+                ),
+                "https://fass.de",
+            )
 
     def test_exact_continuation_loss_only(self) -> None:
         self.assertTrue(
@@ -149,6 +166,15 @@ class ContractTests(unittest.TestCase):
             validate_external_artifact_url(
                 "https://user:secret@files.example.edu/report.pdf"
             )
+
+    def test_platform_origin_is_canonical_ascii(self) -> None:
+        self.assertEqual(
+            validate_platform_origin(self.platform_origin), self.platform_origin
+        )
+        with self.assertRaisesRegex(ContractError, "platform origin"):
+            validate_platform_origin("https://sage.example.edu/path")
+        with self.assertRaisesRegex(ContractError, "platform origin"):
+            validate_platform_origin("https://faß.de")
 
 
 if __name__ == "__main__":

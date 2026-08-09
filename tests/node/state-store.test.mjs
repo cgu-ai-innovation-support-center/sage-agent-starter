@@ -108,4 +108,12 @@ test("stream gate withholds completion until state is durably recorded", () => {
     write: (frame) => failedRelease.push(frame),
   });
   assert.deepEqual(failedRelease, []);
+
+  const earlyDone = new DurableResponseStreamGate();
+  earlyDone.push(Buffer.from("data: [DONE]\n\n"));
+  assert.throws(
+    () => earlyDone.push(Buffer.from(`data: ${JSON.stringify({ type: "response.completed", response: { id: "resp-late" } })}\n\n`)),
+    /followed response.failed/,
+  );
+  assert.equal(earlyDone.finish().completedResponseId, null);
 });

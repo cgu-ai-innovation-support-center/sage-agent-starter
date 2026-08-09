@@ -21,6 +21,7 @@ from contract import (
     is_previous_response_error,
     validate_external_artifact_url,
     validate_platform_contract,
+    validate_platform_origin,
 )
 from state_store import (
     DurableResponseStreamGate,
@@ -30,6 +31,7 @@ from state_store import (
 
 MAX_BODY_BYTES = 256_000
 MAX_UPSTREAM_BYTES = 8_000_000
+REQUEST_BODY_TIMEOUT_SECONDS = 10
 UPSTREAM_TOTAL_TIMEOUT_SECONDS = 60
 state = SqliteResponseStateStore()
 state.prune()
@@ -133,10 +135,13 @@ async def readiness() -> Response:
     try:
         required("AGENT_INVOCATION_KEY", 32)
         required("AGENT_MODEL")
-        required("SAGE_PLATFORM_ORIGIN")
+        validate_platform_origin(required("SAGE_PLATFORM_ORIGIN"))
+        configured_artifact_url = os.environ.get("AGENT_ARTIFACT_URL", "").strip()
+        if configured_artifact_url:
+            validate_external_artifact_url(configured_artifact_url)
         if not state.ready():
             raise RuntimeError("state store unavailable")
-    except RuntimeError as exc:
+    except (ContractError, RuntimeError, ValueError) as exc:
         raise HTTPException(status_code=503, detail="agent unavailable") from exc
     return Response(status_code=204, headers={"cache-control": "no-store"})
 
@@ -155,11 +160,15 @@ async def responses(request: Request) -> StreamingResponse | JSONResponse:
         raise HTTPException(status_code=413, detail="request too large")
     chunks: list[bytes] = []
     transferred = 0
-    async for chunk in request.stream():
-        transferred += len(chunk)
-        if transferred > MAX_BODY_BYTES:
-            raise HTTPException(status_code=413, detail="request too large")
-        chunks.append(chunk)
+    try:
+        async with asyncio.timeout(REQUEST_BODY_TIMEOUT_SECONDS):
+            async for chunk in request.stream():
+                transferred += len(chunk)
+                if transferred > MAX_BODY_BYTES:
+                    raise HTTPException(status_code=413, detail="request too large")
+                chunks.append(chunk)
+    except TimeoutError as exc:
+        raise HTTPException(status_code=408, detail="request body timeout") from exc
     raw = b"".join(chunks)
     try:
         body = json.loads(raw)
@@ -200,18 +209,23 @@ async def responses(request: Request) -> StreamingResponse | JSONResponse:
     client = httpx.AsyncClient(
         timeout=httpx.Timeout(60, connect=5), follow_redirects=False
     )
+    upstream_deadline = (
+        asyncio.get_running_loop().time() + UPSTREAM_TOTAL_TIMEOUT_SECONDS
+    )
     try:
-        upstream = await client.send(
-            client.build_request("POST", target, headers=headers, json=payload),
-            stream=True,
-        )
-    except httpx.HTTPError as exc:
+        async with asyncio.timeout_at(upstream_deadline):
+            upstream = await client.send(
+                client.build_request("POST", target, headers=headers, json=payload),
+                stream=True,
+            )
+    except (TimeoutError, httpx.HTTPError) as exc:
         await client.aclose()
         raise HTTPException(status_code=502, detail="model gateway unavailable") from exc
     if upstream.status_code < 200 or upstream.status_code >= 300:
         try:
-            raw_error = await read_bounded_error(upstream)
-        except RuntimeError as exc:
+            async with asyncio.timeout_at(upstream_deadline):
+                raw_error = await read_bounded_error(upstream)
+        except (RuntimeError, TimeoutError) as exc:
             await upstream.aclose()
             await client.aclose()
             raise HTTPException(
@@ -233,13 +247,15 @@ async def responses(request: Request) -> StreamingResponse | JSONResponse:
         )
 
     async def relay() -> AsyncIterator[bytes]:
+        relay_started = time.monotonic()
+        outcome = "incomplete"
         transferred = 0
         gate = DurableResponseStreamGate()
         try:
             artifact = artifact_event()
             if artifact:
                 yield artifact
-            async with asyncio.timeout(UPSTREAM_TOTAL_TIMEOUT_SECONDS):
+            async with asyncio.timeout_at(upstream_deadline):
                 async for chunk in upstream.aiter_raw():
                     transferred += len(chunk)
                     if transferred > MAX_UPSTREAM_BYTES:
@@ -255,9 +271,19 @@ async def responses(request: Request) -> StreamingResponse | JSONResponse:
                 state=state,
             ):
                 yield frame
+            if completion.completed_response_id is not None:
+                outcome = "completed"
+        except BaseException:
+            outcome = "failed"
+            raise
         finally:
             await upstream.aclose()
             await client.aclose()
+            log(
+                "response_stream_finished",
+                duration_ms=round((time.monotonic() - relay_started) * 1000),
+                outcome=outcome,
+            )
 
     return StreamingResponse(
         relay(),

@@ -125,6 +125,14 @@ class StateStoreTests(unittest.TestCase):
             (),
         )
 
+        early_done = DurableResponseStreamGate()
+        early_done.push(b"data: [DONE]\n\n")
+        with self.assertRaisesRegex(ValueError, "followed response.failed"):
+            early_done.push(
+                b'data: {"type":"response.completed","response":{"id":"resp-late"}}\n\n'
+            )
+        self.assertIsNone(early_done.finish().completed_response_id)
+
     def test_tracker_preserves_split_utf8_frames(self) -> None:
         tracker = DurableResponseStreamGate()
         stream = (

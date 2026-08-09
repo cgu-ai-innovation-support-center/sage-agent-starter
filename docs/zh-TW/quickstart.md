@@ -31,7 +31,7 @@ credential fallback。修改後執行 npm test，並列出仍需人工確認的�
 需要 Node.js 22.13 以上與 Python 3.12；執行：
 
 ```bash
-git clone --branch v0.1.0 --depth 1 https://github.com/cgu-ai-innovation-support-center/sage-agent-starter.git
+git clone --branch v0.1.1 --depth 1 https://github.com/cgu-ai-innovation-support-center/sage-agent-starter.git
 cd sage-agent-starter
 npm run doctor
 npm test

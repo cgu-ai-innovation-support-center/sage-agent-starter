@@ -4,6 +4,7 @@ import {
   isPreviousResponseError,
   validateExternalArtifactUrl,
   validatePlatformContract,
+  validatePlatformOrigin,
   validateShowcaseContract,
 } from "./contract.mjs";
 import {
@@ -127,10 +128,18 @@ const server = createServer(async (request, response) => {
       return;
     }
     if (request.method === "GET" && request.url === "/readyz") {
-      required("AGENT_INVOCATION_KEY", 32);
-      required("AGENT_MODEL");
-      required("SAGE_PLATFORM_ORIGIN");
-      if (!state.ready()) throw new Error("state store unavailable");
+      try {
+        required("AGENT_INVOCATION_KEY", 32);
+        required("AGENT_MODEL");
+        validatePlatformOrigin(required("SAGE_PLATFORM_ORIGIN"));
+        const configuredArtifactUrl = process.env.AGENT_ARTIFACT_URL?.trim();
+        if (configuredArtifactUrl) validateExternalArtifactUrl(configuredArtifactUrl);
+        if (!state.ready()) throw new Error("state store unavailable");
+      } catch {
+        status = 503;
+        response.writeHead(status, { "cache-control": "no-store" }).end();
+        return;
+      }
       status = 204;
       response.writeHead(status, { "cache-control": "no-store" }).end();
       return;

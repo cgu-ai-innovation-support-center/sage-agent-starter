@@ -65,11 +65,18 @@ const listed = spawnSync("git", ["ls-files", "--cached", "--others", "--exclude-
 });
 requireCondition(listed.status === 0, "could not list repository files");
 const paths = listed.stdout.toString("utf8").split("\0").filter(Boolean);
-requireCondition(!paths.some((path) => path === ".env" || path.endsWith("/.env")), "a runtime .env file is tracked");
+requireCondition(
+  !paths.some((path) => {
+    const basename = path.split("/").at(-1);
+    return basename?.startsWith(".env") && basename !== ".env.example";
+  }),
+  "a runtime .env variant is tracked",
+);
 requireCondition(!paths.some((path) => path.startsWith(".github/workflows/")), "GitHub Actions are intentionally out of the v0.1 release gate");
 
 const privateIpv4 = /\b(?:10\.\d{1,3}\.\d{1,3}\.\d{1,3}|192\.168\.\d{1,3}\.\d{1,3}|172\.(?:1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3})\b/g;
 const secretShape = /\b(?:sk-|mp1\.|af1\.)[A-Za-z0-9_-]{24,}\b/g;
+const secretAssignment = /\b(?:TOKEN|SECRET|KEY|PASSWORD)\b\s*[:=]\s*["']?([A-Za-z0-9_./+=-]{24,})/gi;
 for (const path of paths) {
   if (path.startsWith(".git/") || /\.(?:png|jpg|jpeg|webp)$/i.test(path)) continue;
   const text = readFileSync(new URL(path, root), "utf8");
@@ -78,6 +85,13 @@ for (const path of paths) {
   for (const match of text.matchAll(secretShape)) {
     const body = match[0].replace(/^(?:sk-|mp1\.|af1\.)/, "");
     requireCondition(new Set(body).size <= 3, `${path} contains a credential-shaped high-entropy value`);
+  }
+  for (const match of text.matchAll(secretAssignment)) {
+    const body = match[1];
+    requireCondition(
+      body.includes("replace-with") || new Set(body).size <= 6,
+      `${path} contains a high-entropy credential assignment`,
+    );
   }
 }
 

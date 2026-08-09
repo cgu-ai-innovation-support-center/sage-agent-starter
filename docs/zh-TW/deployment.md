@@ -6,9 +6,9 @@ Starter 不會替你部署服務；runtime、domain、TLS、state、secrets、�
 ## Container
 
 ```bash
-docker build --pull -f node/Dockerfile -t my-sage-agent:v0.1.0 .
+docker build --pull -f node/Dockerfile -t my-sage-agent:v0.1.1 .
 # 或
-docker build --pull -f fastapi/Dockerfile -t my-sage-agent:v0.1.0 .
+docker build --pull -f fastapi/Dockerfile -t my-sage-agent:v0.1.1 .
 ```
 
 以非 root user 執行、drop all capabilities、使用 read-only filesystem，並

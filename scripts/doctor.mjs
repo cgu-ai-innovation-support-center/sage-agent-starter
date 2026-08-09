@@ -3,6 +3,10 @@
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
+import {
+  validateExternalArtifactUrl,
+  validatePlatformOrigin,
+} from "../node/contract.mjs";
 
 const failures = [];
 const warnings = [];
@@ -65,21 +69,22 @@ const platformOrigin = process.env.SAGE_PLATFORM_ORIGIN?.trim();
 if (!platformOrigin) warn("SAGE_PLATFORM_ORIGIN is not loaded; this is expected before local run setup");
 else {
   try {
-    const url = new URL(platformOrigin);
-    if (
-      url.protocol !== "https:" ||
-      url.username ||
-      url.password ||
-      url.search ||
-      url.hash ||
-      url.pathname !== "/" ||
-      platformOrigin.includes("replace-with")
-    ) {
-      throw new Error();
-    }
+    if (platformOrigin.includes("replace-with")) throw new Error();
+    validatePlatformOrigin(platformOrigin);
     pass("SAGE platform origin");
   } catch {
     fail("SAGE_PLATFORM_ORIGIN must be an exact non-placeholder HTTPS origin");
+  }
+}
+
+const artifactUrl = process.env.AGENT_ARTIFACT_URL?.trim();
+if (!artifactUrl) warn("AGENT_ARTIFACT_URL is not loaded; external links stay disabled");
+else {
+  try {
+    validateExternalArtifactUrl(artifactUrl);
+    pass("external Artifact URL");
+  } catch {
+    fail("AGENT_ARTIFACT_URL must be credential-free ASCII HTTPS without query or fragment");
   }
 }
 

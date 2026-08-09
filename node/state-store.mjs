@@ -174,7 +174,13 @@ export class DurableResponseStreamGate {
       .filter((line) => line.startsWith("data:"))
       .map((line) => line.slice(5).trimStart())
       .join("\n");
-    if (!data || data === "[DONE]") {
+    if (data === "[DONE]") {
+      if (this.terminalState === "open") this.terminalState = "failed";
+      if (this.terminalState === "completed") this.terminalSuffix.push(serialized);
+      else return [serialized];
+      return [];
+    }
+    if (!data) {
       if (this.terminalState === "completed") this.terminalSuffix.push(serialized);
       else return [serialized];
       return [];

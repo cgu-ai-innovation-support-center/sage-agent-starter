@@ -1,6 +1,6 @@
 {
   "name": "@cgu-sage/agent-starter",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "Source-available starter templates for CGU SAGE self-hosted Agents",
   "type": "module",

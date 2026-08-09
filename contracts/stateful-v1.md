@@ -1,8 +1,8 @@
 # SAGE Responses profile: `stateful-v1`
 
-Contract revision: `2026-08-09`
+Contract revision: `2026-08-10`
 
-This file is the public Agent-author contract for Starter release `v0.1.0`.
+This file is the public Agent-author contract for Starter release `v0.1.1`.
 The SAGE platform remains authoritative for authorization, Budgets, safe
 egress, canonical transcripts, and runtime enforcement.
 
@@ -76,4 +76,6 @@ error bodies, secrets, request bodies, prompts, or internal network details.
 Cancellation closes the upstream request. Withhold the terminal
 `response.completed` frame until its conversation-scoped continuation mapping
 has been committed durably; a persistence failure closes an incomplete stream
-without releasing that frame.
+without releasing that frame. A provider `[DONE]`, failure, incomplete, or
+error terminal observed before `response.completed` is irreversible and must
+never be followed by a persisted completion.

@@ -4,6 +4,7 @@ import {
   isPreviousResponseError,
   validateExternalArtifactUrl,
   validatePlatformContract,
+  validatePlatformOrigin,
 } from "../../node/contract.mjs";
 
 const conversationId = "11111111-1111-4111-8111-111111111111";
@@ -115,6 +116,20 @@ test("rejects full history, missing scope, and malformed run leases", () => {
     }, platformOrigin),
     /model proxy URL/,
   );
+  assert.throws(
+    () => validatePlatformContract(headers, {
+      ...request([{ content: "first", role: "user" }]),
+      artifact_access: {
+        ...artifactAccess,
+        upload_url: "https://fass.de/api/agents/artifacts",
+      },
+      model_access: {
+        ...modelAccess,
+        base_url: "https://faß.de/api/agents/model-proxy/v1",
+      },
+    }, "https://fass.de"),
+    /model proxy URL/,
+  );
 });
 
 test("normalizes only exact continuation loss", () => {
@@ -145,4 +160,10 @@ test("accepts only credential-free external Artifact links", () => {
     () => validateExternalArtifactUrl("https://user:secret@files.example.edu/report.pdf"),
     /credential-free HTTPS/,
   );
+});
+
+test("requires a canonical ASCII SAGE platform origin", () => {
+  assert.equal(validatePlatformOrigin(platformOrigin), platformOrigin);
+  assert.throws(() => validatePlatformOrigin("https://sage.example.edu/path"), /platform origin/);
+  assert.throws(() => validatePlatformOrigin("https://faß.de"), /platform origin/);
 });

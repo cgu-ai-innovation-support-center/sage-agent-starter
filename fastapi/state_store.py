@@ -197,7 +197,14 @@ class DurableResponseStreamGate:
             for line in frame.splitlines()
             if line.startswith("data:")
         )
-        if not data or data == "[DONE]":
+        if data == "[DONE]":
+            if self._terminal_state == "open":
+                self._terminal_state = "failed"
+            if self._terminal_state == "completed":
+                self._terminal_suffix.append(serialized)
+                return []
+            return [serialized]
+        if not data:
             if self._terminal_state == "completed":
                 self._terminal_suffix.append(serialized)
                 return []

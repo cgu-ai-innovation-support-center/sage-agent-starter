@@ -50,15 +50,17 @@ def _valid_approval(item: object) -> bool:
 def _parsed_origin(parsed) -> str:
     try:
         port = parsed.port
-        host = parsed.hostname.encode("idna").decode("ascii").lower()
-    except (AttributeError, UnicodeError, ValueError) as exc:
+        host = parsed.hostname.lower()
+    except (AttributeError, ValueError) as exc:
         raise ContractError("invalid configured SAGE platform origin") from exc
     rendered_host = f"[{host}]" if ":" in host else host
     suffix = "" if port in {None, 443} else f":{port}"
     return f"https://{rendered_host}{suffix}"
 
 
-def _platform_origin(value: str) -> str:
+def validate_platform_origin(value: str) -> str:
+    if not isinstance(value, str) or not value.isascii():
+        raise ContractError("invalid configured SAGE platform origin")
     try:
         parsed = urlparse(value)
     except (AttributeError, TypeError, ValueError) as exc:
@@ -101,7 +103,8 @@ def _model_access(
         or parsed.query
         or parsed.fragment
         or parsed.path.rstrip("/") != "/api/agents/model-proxy/v1"
-        or _parsed_origin(parsed) != _platform_origin(expected_origin)
+        or not base_url.isascii()
+        or _parsed_origin(parsed) != validate_platform_origin(expected_origin)
     ):
         raise ContractError("invalid model proxy URL")
     if (
@@ -164,7 +167,8 @@ def _artifact_access(body: dict[str, object], expected_origin: str) -> None:
         or parsed.query
         or parsed.fragment
         or parsed.path != "/api/agents/artifacts"
-        or _parsed_origin(parsed) != _platform_origin(expected_origin)
+        or not upload_url.isascii()
+        or _parsed_origin(parsed) != validate_platform_origin(expected_origin)
     ):
         raise ContractError("invalid artifact upload URL")
     expires_at = value.get("expires_at")
@@ -288,6 +292,7 @@ def validate_external_artifact_url(raw: object) -> str:
         or parsed.params
         or parsed.query
         or parsed.fragment
+        or not raw.isascii()
     ):
         raise ContractError("external Artifact URL must be credential-free HTTPS")
     return raw

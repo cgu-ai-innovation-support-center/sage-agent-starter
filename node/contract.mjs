@@ -16,6 +16,10 @@ function hasOnlyKeys(value, allowed) {
   );
 }
 
+function isAscii(value) {
+  return typeof value === "string" && /^[\x00-\x7F]*$/.test(value);
+}
+
 function validApproval(item) {
   return (
     hasOnlyKeys(
@@ -36,7 +40,10 @@ function validApproval(item) {
   );
 }
 
-function platformOrigin(value) {
+export function validatePlatformOrigin(value) {
+  if (!isAscii(value)) {
+    throw contractError("invalid configured SAGE platform origin");
+  }
   let url;
   try {
     url = new URL(value);
@@ -84,7 +91,8 @@ function modelAccess(body, expectedOrigin) {
     url.search ||
     url.hash ||
     url.pathname.replace(/\/$/, "") !== "/api/agents/model-proxy/v1" ||
-    url.origin !== platformOrigin(expectedOrigin)
+    !isAscii(value.base_url) ||
+    url.origin !== validatePlatformOrigin(expectedOrigin)
   ) {
     throw contractError("invalid model proxy URL");
   }
@@ -145,7 +153,8 @@ function artifactAccess(body, expectedOrigin) {
     uploadUrl.search ||
     uploadUrl.hash ||
     uploadUrl.pathname !== "/api/agents/artifacts" ||
-    uploadUrl.origin !== platformOrigin(expectedOrigin)
+    !isAscii(value.upload_url) ||
+    uploadUrl.origin !== validatePlatformOrigin(expectedOrigin)
   ) {
     throw contractError("invalid artifact upload URL");
   }
@@ -322,7 +331,8 @@ export function validateExternalArtifactUrl(raw) {
     url.username ||
     url.password ||
     url.search ||
-    url.hash
+    url.hash ||
+    !isAscii(raw)
   ) {
     throw contractError("external Artifact URL must be credential-free HTTPS");
   }
