@@ -24,13 +24,25 @@ classifier.
 | typing-inspection | MIT |
 | uvicorn | BSD-3-Clause |
 
+The optional HTTPS profile uses the official Caddy `2.10.2-alpine`
+multi-platform OCI index pinned at
+`sha256:4c6e91c6ed0e2fa03efd5b44747b625fec79bc9cd06ac5235a779726618e530d`.
+Caddy is licensed under Apache-2.0. The official image also contains Alpine
+components governed by their respective package licenses. Re-review the image,
+SBOM, advisories, and license material before changing its tag or digest.
+
 Re-resolve the complete dependency set and re-review its metadata, licenses,
 and vulnerabilities before each release.
 
-The Dockerfiles pin official Node and Python multi-platform image digests. A
+`fastapi/requirements.txt` is fully version-resolved but is not an
+artifact-hash lock. Do not describe it as `--require-hashes` reproducibility;
+generating and validating one lock that covers every supported container
+architecture remains a maintainer release task.
+
+The Dockerfiles and Caddy sidecar pin official multi-platform image digests. A
 digest makes the selected image reproducible; it does not mean the image is
-free of vulnerabilities. Re-review and intentionally update the tag and digest
-for every Starter release.
+free of vulnerabilities. Re-review and intentionally update each tag and
+digest for every Starter release.
 
 No code from the OpenAI Agents SDK, LangGraph, SAGE's private dependencies, or
 the Dify submodule is redistributed in this repository.

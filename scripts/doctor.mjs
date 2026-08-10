@@ -7,6 +7,7 @@ import {
   validateExternalArtifactUrl,
   validatePlatformOrigin,
 } from "../node/contract.mjs";
+import { loadAgentProfile } from "../node/agent-profile.mjs";
 
 const failures = [];
 const warnings = [];
@@ -53,6 +54,13 @@ const contract = readFileSync(new URL(`../${manifest.sage.contract_file}`, impor
 const digest = `sha256:${createHash("sha256").update(contract).digest("hex")}`;
 if (manifest.sage.contract_sha256 === digest) pass("compatibility contract digest");
 else fail("compatibility contract digest does not match the tracked contract");
+
+try {
+  const profile = loadAgentProfile();
+  pass(`fixed Agent profile ${profile.id}`);
+} catch {
+  fail("fixed Agent profile/instructions are invalid");
+}
 
 const invocationKey = process.env.AGENT_INVOCATION_KEY?.trim();
 if (!invocationKey) warn("AGENT_INVOCATION_KEY is not loaded; this is expected before local run setup");

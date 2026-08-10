@@ -1,14 +1,16 @@
 # Deployment and rollback
 
-The Starter does not deploy the service. The Agent operator owns runtime,
-domain, TLS, state, secrets, monitoring, patching, and recovery.
+The Starter provides local Compose profiles and an optional private HTTPS kit;
+it does not operate the host for you. The Agent operator owns runtime,
+reachability, TLS private material, state, secrets, monitoring, patching, and
+recovery.
 
 ## Container
 
 ```bash
-docker build --pull -f node/Dockerfile -t my-sage-agent:v0.1.2 .
+docker build --pull -f node/Dockerfile -t my-sage-agent:v0.1.3 .
 # or
-docker build --pull -f fastapi/Dockerfile -t my-sage-agent:v0.1.2 .
+docker build --pull -f fastapi/Dockerfile -t my-sage-agent:v0.1.3 .
 ```
 
 Run as a non-root user, drop all capabilities, use a read-only filesystem, and
@@ -22,6 +24,10 @@ redirects and public endpoints resolving to loopback, private, link-local,
 metadata, or otherwise unsafe addresses. Do not disable those protections. A
 campus-private route requires a separate, exact, deployment-owned connectivity
 profile configured by platform operators.
+
+The maintained Starter option is the [per-Agent private HTTPS kit](private-https.md).
+It does not require a SAGE domain or public certificate. Public CA trust and
+private-network routing remain separate controls.
 
 ## State, backup, and scale
 

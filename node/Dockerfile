@@ -6,6 +6,7 @@ ENV HOST=0.0.0.0 \
     NODE_ENV=production
 
 WORKDIR /app
+COPY --chown=node:node agent/ ./agent/
 COPY --chown=node:node node/ ./node/
 RUN install -d -o node -g node -m 0700 /data
 

@@ -23,24 +23,37 @@ conversation ID, and stream Responses events. They never receive or store a
 LiteLLM Virtual Key or provider credential. Both lease endpoints must match the
 exact `SAGE_PLATFORM_ORIGIN` configured by the operator.
 
+Both templates also read the same bounded fixed-path
+[`agent/profile.json`](agent/profile.json) and
+[`agent/instructions.md`](agent/instructions.md). The included
+[minimal course tutor](agent/requirements.md) provides requirements,
+instructions, and acceptance prompts without adding files, tools, RAG, or a
+third runtime.
+
 ## Fastest local check
 
 ```bash
 npm run doctor
-npm test
+npm run test:light
 ```
 
 If your system `python3` is older but Python 3.12 is installed separately, set
 `PYTHON=/path/to/python3.12` for both commands.
 
-`npm test` is the release gate while GitHub-hosted automation is intentionally
-disabled. It validates the compatibility manifest, checks release source for
-known credential-shaped and private-IPv4 literals, and runs the dependency-free
-Node and Python contract/state tests.
+`npm run test:light` validates the compatibility and customization manifests,
+known exposure rules, pinned dependencies/actions, shared golden cases, and
+dependency-free Node/Python tests. A SHA-pinned maintainer PR workflow runs the
+same lightweight sensor. Teachers do not need that workflow, GitHub Actions,
+or CI quota to run or deploy an Agent.
+
+Before registration or release, run `npm run test:full`. It additionally builds
+and starts both reference containers, probes HTTP health/readiness, and proves
+the pinned Caddy private-CA TLS handshake. `npm test` is an alias for this full
+local gate.
 
 Maintainers run `npm run release:verify` after creating an annotated release
 tag. It rejects a dirty worktree, a lightweight tag, or a tag that does not
-resolve to the current commit.
+resolve to the current commit, and invokes the full local gate.
 
 To run a template, copy the placeholders and follow the language quickstart:
 
@@ -67,6 +80,11 @@ Deployment and rollback guides:
 - A version mismatch, missing continuation state, malformed lease, or unknown
   capability fails explicitly. There is no full-history or credential
   fallback.
+- [`AGENTS.md`](AGENTS.md), [`ARCHITECTURE.md`](ARCHITECTURE.md), and the
+  [code reference](docs/code-reference.md) form the coding-agent harness.
+- [`harness/customization-policy.json`](harness/customization-policy.json) and
+  `npm run customization:check` distinguish the safe behavior seam from
+  review-required protocol/security code.
 
 ## Supported and intentionally unsupported
 
@@ -79,17 +97,24 @@ Supported in v0.1:
 - Restart-safe, conversation-scoped local SQLite state.
 - Health/readiness endpoints, bounded requests/streams, container builds, and
   secret-safe operational logs.
+- A fixed-profile minimal course tutor and top-level provider `instructions`
+  that leave SAGE's newest `input` unchanged.
+- Optional per-Agent private HTTPS with automatic Caddy leaf renewal and an
+  exact public-only SAGE trust bundle.
 
 Not included:
 
 - Reading SAGE's canonical conversation transcript.
-- SAGE deployment, registration automation, or production hosting.
+- SAGE deployment, registration automation, public/private network routing,
+  or managed production hosting.
 - A direct LiteLLM key, provider key, or private-network fallback.
-- LangGraph, Agents SDK, or domain-specific teaching prompts. Add those only
-  after the base contract remains green.
+- Files, tools, RAG, LangGraph, or Agents SDK. Add them only after defining the
+  data, approval, operational, and verification boundaries.
 
 ## Security and support
 
 Read [SECURITY.md](SECURITY.md) before publishing an endpoint. Public Agents
 remain subject to SAGE HTTPS and safe-egress checks. The Agent owns its tools,
 files, state store, malware policy, backups, rollback, and runtime operations.
+If public certificates are operationally unsuitable, follow the
+[Private HTTPS guide](docs/en-US/private-https.md); never disable verification.

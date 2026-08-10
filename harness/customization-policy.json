@@ -1,0 +1,35 @@
+{
+  "schema": "sage-starter-customization-policy-v1",
+  "safe_customization_paths": [
+    "agent/acceptance.md",
+    "agent/instructions.md",
+    "agent/profile.json",
+    "agent/requirements.md"
+  ],
+  "review_required_prefixes": [
+    ".github/",
+    "contracts/",
+    "deploy/",
+    "fastapi/",
+    "harness/",
+    "node/",
+    "scripts/",
+    "tests/"
+  ],
+  "review_required_paths": [
+    ".dockerignore",
+    ".env.example",
+    ".gitignore",
+    "AGENTS.md",
+    "ARCHITECTURE.md",
+    "CHANGELOG.md",
+    "CONTRIBUTING.md",
+    "LICENSE",
+    "README.md",
+    "SECURITY.md",
+    "THIRD_PARTY.md",
+    "compatibility.json",
+    "compose.yaml",
+    "package.json"
+  ]
+}

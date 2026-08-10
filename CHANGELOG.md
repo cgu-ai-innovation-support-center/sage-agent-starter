@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.1.3 - 2026-08-10
+
+- Add a coding-agent harness with task routing, architecture/code references,
+  a machine-readable safe-customization policy, and a minimal course-tutor
+  vertical slice shared by Node and FastAPI.
+- Add top-level provider `instructions` without changing SAGE's newest-input
+  or continuation behavior, plus shared golden parity tests.
+- Add an optional non-root, capability-dropped Caddy private-CA HTTPS profile,
+  exact public-only `sage-agent-trust.json`, certificate/data checks, and TLS
+  doctor while keeping network reachability under SAGE safe-egress policy.
+- Separate SHA-pinned maintainer lightweight CI from the Docker-backed local
+  full gate; the full gate starts both runtimes and tests HTTP/TLS readiness.
+- Log sanitized Node stream outcomes for completed, failed, and incomplete
+  provider streams.
+
 ## 0.1.2 - 2026-08-10
 
 - Replace provider-supplied SSE failure fields with one fixed generic terminal

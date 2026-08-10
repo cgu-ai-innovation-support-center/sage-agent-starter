@@ -69,6 +69,7 @@ test("stream gate withholds completion until state is durably recorded", () => {
   assert.equal(output.some((frame) => frame.includes("response.completed")), false);
   const completion = gate.finish();
   assert.equal(completion.completedResponseId, "resp-1");
+  assert.equal(completion.streamOutcome, "completed");
 
   const order = [];
   commitThenReleaseTerminal({
@@ -105,6 +106,7 @@ test("stream gate withholds completion until state is durably recorded", () => {
     /followed response.failed/,
   );
   assert.equal(failed.finish().completedResponseId, null);
+  assert.equal(failed.finish().streamOutcome, "failed");
   const failedRelease = [];
   commitThenReleaseTerminal({
     completion: failed.finish(),
@@ -171,4 +173,12 @@ test("stream gate withholds completion until state is durably recorded", () => {
     /followed response.failed/,
   );
   assert.equal(earlyDone.finish().completedResponseId, null);
+  assert.equal(earlyDone.finish().streamOutcome, "failed");
+
+  const noTerminal = new DurableResponseStreamGate();
+  noTerminal.push(Buffer.from(`data: ${JSON.stringify({
+    type: "response.output_text.delta",
+    delta: "partial",
+  })}\n\n`));
+  assert.equal(noTerminal.finish().streamOutcome, "incomplete");
 });

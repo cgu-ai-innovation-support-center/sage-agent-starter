@@ -25,5 +25,12 @@ forks are not production support commitments.
   uploaded content, or provider responses.
 - Do not add a direct model-key or private-network fallback.
 - Terminate public traffic with HTTPS and retain SAGE's safe-egress checks.
+- Never set `rejectUnauthorized: false`, use an insecure certificate bypass,
+  or add a private CA to a process-wide/global trust store.
+- The Starter private HTTPS kit exports only one self-signed public CA bound to
+  the exact Agent Base URL. Its CA/leaf private keys remain in ignored
+  host-local `data/https` with restrictive ownership and modes.
+- Private CA trust does not authorize loopback, private, link-local, metadata,
+  or other protected network destinations.
 - Patch the runtime, dependencies, base images, reverse proxy, and host under
   the Agent operator's own maintenance process.

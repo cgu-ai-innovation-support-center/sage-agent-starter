@@ -141,6 +141,11 @@ export class DurableResponseStreamGate {
     return {
       completedResponseId: this.completedResponseId,
       outputFrames,
+      streamOutcome: this.terminalState === "completed"
+        ? "completed"
+        : this.terminalState === "failed"
+          ? "failed"
+          : "incomplete",
       terminalFrames: this.terminalFrame
         ? [this.terminalFrame, ...this.terminalSuffix]
         : [],

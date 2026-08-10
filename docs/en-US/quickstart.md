@@ -19,11 +19,14 @@ Describe:
 Give the following prompt to your coding assistant:
 
 ```text
-Read README.md, contracts/stateful-v1.md, compatibility.json, and SECURITY.md
+Read AGENTS.md, ARCHITECTURE.md, agent/requirements.md,
+agent/acceptance.md, and SECURITY.md
 first. Implement the requirement below in the most suitable Node or FastAPI
-template. Do not add a full-history, direct model-key, private-network, or
-credential fallback. Run npm test after the change and list deployment, data,
-and tool risks that still need human review.
+template by changing the fixed agent profile/instructions seam first. Do not
+add a full-history, direct model-key, private-network, TLS-verification, or
+credential fallback. Run npm run customization:check and npm run test:light
+after the change. List deployment, data, and tool risks that still need human
+review.
 
 Requirement: <paste the brief>
 ```
@@ -33,10 +36,10 @@ Requirement: <paste the brief>
 Use Node.js 22.13 or newer and Python 3.12:
 
 ```bash
-git clone --branch v0.1.2 --depth 1 https://github.com/cgu-ai-innovation-support-center/sage-agent-starter.git
+git clone --branch v0.1.3 --depth 1 https://github.com/cgu-ai-innovation-support-center/sage-agent-starter.git
 cd sage-agent-starter
 npm run doctor
-npm test
+npm run test:light
 cp .env.example .env
 ```
 
@@ -53,6 +56,10 @@ no path. The Starter sends short-lived leases only back to that origin.
 
 Both must pass the same contract tests. Framework choice does not change the
 SAGE protocol.
+
+The included [`minimal-course-tutor`](../../agent/requirements.md) is one
+complete vertical slice: requirements, fixed-path instructions, profile, and
+acceptance prompts. Start by editing only those `agent/` files.
 
 ## 4. Run locally
 
@@ -100,3 +107,8 @@ docker compose --profile fastapi up --build
 
 If SAGE receives `previous_response_not_found`, start a new conversation. Do
 not resend full history.
+
+Before registration, run `npm run test:full` locally. It builds and starts both
+reference images and verifies HTTP and private-CA TLS smoke. Teachers do not
+need GitHub Actions or CI quota to run or deploy the Agent. If a public
+certificate is inconvenient, use the [private HTTPS guide](private-https.md).

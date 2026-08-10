@@ -17,11 +17,12 @@ coding assistant 在既有安全邊界內修改範例，而不必先理解整份
 可以將這段話交給 coding assistant：
 
 ```text
-請先閱讀 README.md、contracts/stateful-v1.md、compatibility.json 與
-SECURITY.md。根據下面的教學需求，在最適合的 Node 或 FastAPI template
-中實作。不得新增 full-history、direct model key、private-network 或
-credential fallback。修改後執行 npm test，並列出仍需人工確認的部署、
-資料與工具風險。
+請先閱讀 AGENTS.md、ARCHITECTURE.md、agent/requirements.md、
+agent/acceptance.md 與 SECURITY.md。根據下面的教學需求，優先修改固定的
+agent profile/instructions seam。不得新增 full-history、direct model key、
+private-network、TLS verification 或 credential fallback。修改後執行
+npm run customization:check 與 npm run test:light，並列出仍需人工確認的
+部署、資料與工具風險。
 
 需求：<貼上需求 brief>
 ```
@@ -31,10 +32,10 @@ credential fallback。修改後執行 npm test，並列出仍需人工確認的�
 需要 Node.js 22.13 以上與 Python 3.12；執行：
 
 ```bash
-git clone --branch v0.1.2 --depth 1 https://github.com/cgu-ai-innovation-support-center/sage-agent-starter.git
+git clone --branch v0.1.3 --depth 1 https://github.com/cgu-ai-innovation-support-center/sage-agent-starter.git
 cd sage-agent-starter
 npm run doctor
-npm test
+npm run test:light
 cp .env.example .env
 ```
 
@@ -50,6 +51,10 @@ cp .env.example .env
 - FastAPI：既有服務以 Python 為主時使用。
 
 兩者必須通過相同 contract tests。框架選擇不會改變 SAGE protocol。
+
+內建的 [`minimal-course-tutor`](../../agent/requirements.md) 是一個完整的最小
+vertical slice，包含 requirements、固定路徑 instructions、profile 與驗收
+prompts。先只修改這些 `agent/` 檔案即可。
 
 ## 4. 本機啟動
 
@@ -92,3 +97,8 @@ docker compose --profile fastapi up --build
 6. 測試第一回合、第二回合、restart 後續談、取消與 approval/result。
 
 若收到 `previous_response_not_found`，建立新對話；不要重新傳送完整歷史。
+
+登錄前在本機執行 `npm run test:full`；它會建置並啟動兩個 reference image，
+完成 HTTP 與 private-CA TLS smoke。教師執行或部署 Agent 不需要 GitHub
+Actions，也不依賴 CI 額度。若公信憑證不方便，可使用
+[Private HTTPS 教學](private-https.md)。

@@ -28,4 +28,11 @@ if (taggedCommit !== head) {
   throw new Error(`${tag} does not resolve to current HEAD ${head}`);
 }
 
+const fullGate = spawnSync(process.execPath, ["scripts/validate.mjs", "--full"], {
+  cwd: root,
+  encoding: "utf8",
+  stdio: "inherit",
+});
+if (fullGate.status !== 0) throw new Error("full local release gate failed");
+
 process.stdout.write(`Verified annotated ${tag} at ${head}.\n`);

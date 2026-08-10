@@ -1,7 +1,7 @@
 import { createServer } from "node:http";
 import { randomUUID, timingSafeEqual } from "node:crypto";
 
-const host = "127.0.0.1";
+const host = process.env.SAGE_LOCAL_FIXTURE_MODEL_HOST?.trim() || "127.0.0.1";
 const port = Number(process.env.SAGE_LOCAL_FIXTURE_MODEL_PORT ?? "3910");
 const apiKey = process.env.SAGE_LOCAL_FIXTURE_PROVIDER_KEY?.trim();
 const model = "sage-local-fixture";
@@ -13,6 +13,9 @@ if (!apiKey || apiKey.length < 32) {
 }
 if (!Number.isInteger(port) || port < 1 || port > 65_535) {
   throw new Error("SAGE_LOCAL_FIXTURE_MODEL_PORT must be a valid TCP port");
+}
+if (!new Set(["127.0.0.1", "0.0.0.0"]).has(host)) {
+  throw new Error("SAGE_LOCAL_FIXTURE_MODEL_HOST must be 127.0.0.1 or 0.0.0.0");
 }
 
 function authorized(request) {
@@ -176,6 +179,33 @@ function streamResponse(response) {
   response.end();
 }
 
+function streamNonSuccess(response, mode) {
+  response.writeHead(200, {
+    "cache-control": "no-store",
+    "content-type": "text/event-stream",
+    connection: "keep-alive",
+  });
+  if (mode === "failed") {
+    writeEvent(response, {
+      type: "response.failed",
+      error: { message: "SAGE_FIXTURE_PRIVATE_DETAIL_MUST_NOT_RELAY" },
+    });
+  } else if (mode === "incomplete-terminal") {
+    writeEvent(response, {
+      type: "response.incomplete",
+      error: { message: "SAGE_FIXTURE_PRIVATE_DETAIL_MUST_NOT_RELAY" },
+    });
+  } else if (mode === "incomplete") {
+    writeEvent(response, {
+      type: "response.output_text.delta",
+      delta: "SAGE_FIXTURE_PARTIAL",
+    });
+  } else {
+    response.write("data: [DONE]\n\n");
+  }
+  response.end();
+}
+
 function streamChatCompletion(response) {
   const id = `chatcmpl-${randomUUID().replaceAll("-", "")}`;
   const created = Math.floor(Date.now() / 1000);
@@ -232,6 +262,29 @@ createServer(async (request, response) => {
     }
     const body = await readJson(request);
     if (request.url === "/v1/responses") {
+      if (typeof body.instructions !== "string" || !body.instructions.trim() || !Array.isArray(body.input)) {
+        sendJson(response, 400, {
+          error: { message: "missing instructions or input", type: "invalid_request_error" },
+        });
+        return;
+      }
+      const serializedInput = JSON.stringify(body.input);
+      if (serializedInput.includes("SAGE_FIXTURE_FAIL")) {
+        streamNonSuccess(response, "failed");
+        return;
+      }
+      if (serializedInput.includes("SAGE_FIXTURE_INCOMPLETE")) {
+        streamNonSuccess(response, "incomplete-terminal");
+        return;
+      }
+      if (serializedInput.includes("SAGE_FIXTURE_NO_TERMINAL")) {
+        streamNonSuccess(response, "incomplete");
+        return;
+      }
+      if (serializedInput.includes("SAGE_FIXTURE_EARLY_DONE")) {
+        streamNonSuccess(response, "done");
+        return;
+      }
       if (body.stream === true) streamResponse(response);
       else sendJson(response, 200, responseDocument(`resp_${randomUUID().replaceAll("-", "")}`, Math.floor(Date.now() / 1000)));
       return;

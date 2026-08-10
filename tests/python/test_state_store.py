@@ -74,6 +74,7 @@ class StateStoreTests(unittest.TestCase):
         self.assertEqual(output, ())
         completion = gate.finish()
         self.assertEqual(completion.completed_response_id, "resp-1")
+        self.assertEqual(completion.stream_outcome, "completed")
 
         order: list[str] = []
 
@@ -116,6 +117,7 @@ class StateStoreTests(unittest.TestCase):
                 b'data: {"type":"response.completed","response":{"id":"resp-2"}}\n\n'
             )
         self.assertIsNone(failed.finish().completed_response_id)
+        self.assertEqual(failed.finish().stream_outcome, "failed")
 
         class MustNotRecord:
             def record(self, **_: object) -> None:
@@ -186,6 +188,13 @@ class StateStoreTests(unittest.TestCase):
                 b'data: {"type":"response.completed","response":{"id":"resp-late"}}\n\n'
             )
         self.assertIsNone(early_done.finish().completed_response_id)
+        self.assertEqual(early_done.finish().stream_outcome, "failed")
+
+        no_terminal = DurableResponseStreamGate()
+        no_terminal.push(
+            b'data: {"type":"response.output_text.delta","delta":"partial"}\n\n'
+        )
+        self.assertEqual(no_terminal.finish().stream_outcome, "incomplete")
 
     def test_tracker_preserves_split_utf8_frames(self) -> None:
         tracker = DurableResponseStreamGate()

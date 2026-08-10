@@ -1,0 +1,13 @@
+{
+	admin off
+	auto_https disable_redirects
+	persist_config off
+}
+https://{$SAGE_AGENT_HTTPS_SITE} {
+	tls internal
+	header {
+		-Server
+		Cache-Control "no-store"
+	}
+	reverse_proxy {$SAGE_AGENT_UPSTREAM}
+}
