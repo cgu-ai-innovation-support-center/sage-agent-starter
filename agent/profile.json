@@ -1,0 +1,6 @@
+{
+  "schema": "sage-agent-profile-v1",
+  "id": "minimal-course-tutor",
+  "display_name": "Minimal Course Tutor",
+  "instructions_file": "instructions.md"
+}

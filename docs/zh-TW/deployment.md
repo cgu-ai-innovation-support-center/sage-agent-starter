@@ -1,14 +1,15 @@
 # 部署與 rollback
 
-Starter 不會替你部署服務；runtime、domain、TLS、state、secrets、監控與
-維護責任都屬於 Agent operator。
+Starter 提供本機 Compose profiles 與 optional Private HTTPS kit，但不會代替
+教師維運主機；runtime、reachability、TLS private material、state、secrets、
+監控與維護責任仍屬於 Agent operator。
 
 ## Container
 
 ```bash
-docker build --pull -f node/Dockerfile -t my-sage-agent:v0.1.2 .
+docker build --pull -f node/Dockerfile -t my-sage-agent:v0.1.3 .
 # 或
-docker build --pull -f fastapi/Dockerfile -t my-sage-agent:v0.1.2 .
+docker build --pull -f fastapi/Dockerfile -t my-sage-agent:v0.1.3 .
 ```
 
 以非 root user 執行、drop all capabilities、使用 read-only filesystem，並
@@ -20,6 +21,10 @@ docker build --pull -f fastapi/Dockerfile -t my-sage-agent:v0.1.2 .
 loopback、private、link-local、metadata 或解析結果不安全的 public endpoint；
 不要要求停用這些防護。校內私有連線必須由平台管理者另行建立精確的
 deployment-owned connectivity profile。
+
+Starter 維護的選項是[每個 Agent 專屬的 Private HTTPS kit](private-https.md)，
+不需要使用 SAGE domain 或公信憑證。公開 CA trust 與 private-network routing
+仍是兩個分開的控制面。
 
 ## State、備份與 scale
 

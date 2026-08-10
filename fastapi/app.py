@@ -15,6 +15,8 @@ import httpx
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 
+from agent_profile import load_agent_profile
+
 from contract import (
     ContractError,
     MAX_ERROR_BYTES,
@@ -28,6 +30,7 @@ from state_store import (
     SqliteResponseStateStore,
     commit_then_release_terminal,
 )
+from provider_request import build_provider_request
 
 MAX_BODY_BYTES = 256_000
 MAX_UPSTREAM_BYTES = 8_000_000
@@ -35,6 +38,7 @@ REQUEST_BODY_TIMEOUT_SECONDS = 10
 UPSTREAM_TOTAL_TIMEOUT_SECONDS = 60
 state = SqliteResponseStateStore()
 state.prune()
+agent_profile = load_agent_profile()
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 logger = logging.getLogger("sage-agent")
 
@@ -198,13 +202,12 @@ async def responses(request: Request) -> StreamingResponse | JSONResponse:
         "content-type": "application/json",
         "accept": "text/event-stream",
     }
-    payload: dict[str, object] = {
-        "model": required("AGENT_MODEL"),
-        "input": items,
-        "stream": True,
-    }
-    if provider_previous:
-        payload["previous_response_id"] = provider_previous
+    payload = build_provider_request(
+        model=required("AGENT_MODEL"),
+        instructions=agent_profile["instructions"],
+        input_items=items,
+        previous_response_id=provider_previous,
+    )
     target = f"{model_proxy_base_url}/responses"
     client = httpx.AsyncClient(
         timeout=httpx.Timeout(60, connect=5), follow_redirects=False
@@ -263,6 +266,7 @@ async def responses(request: Request) -> StreamingResponse | JSONResponse:
                     for frame in gate.push(chunk):
                         yield frame
             completion = gate.finish()
+            outcome = completion.stream_outcome
             for frame in completion.output_frames:
                 yield frame
             for frame in commit_then_release_terminal(
@@ -271,8 +275,6 @@ async def responses(request: Request) -> StreamingResponse | JSONResponse:
                 state=state,
             ):
                 yield frame
-            if completion.completed_response_id is not None:
-                outcome = "completed"
         except BaseException:
             outcome = "failed"
             raise

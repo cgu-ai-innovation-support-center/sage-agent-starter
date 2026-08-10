@@ -13,6 +13,7 @@ RUN pip install --no-cache-dir --disable-pip-version-check -r requirements.txt \
     && adduser --system --uid 10001 --ingroup sage --home /nonexistent --no-create-home sage \
     && install -d -o sage -g sage -m 0700 /data
 COPY --chown=sage:sage fastapi/ ./fastapi/
+COPY --chown=sage:sage agent/ ./agent/
 
 USER sage
 EXPOSE 8080

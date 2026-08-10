@@ -1,10 +1,10 @@
 services:
   node-agent:
-    profiles: ["node"]
+    profiles: ["node", "node-https"]
     build:
       context: .
       dockerfile: node/Dockerfile
-    env_file: .env
+    env_file: ${SAGE_AGENT_ENV_FILE:-.env}
     environment:
       AGENT_STATE_DB: /data/agent-state.sqlite
       HOST: 0.0.0.0
@@ -21,11 +21,11 @@ services:
       - node-state:/data
 
   fastapi-agent:
-    profiles: ["fastapi"]
+    profiles: ["fastapi", "fastapi-https"]
     build:
       context: .
       dockerfile: fastapi/Dockerfile
-    env_file: .env
+    env_file: ${SAGE_AGENT_ENV_FILE:-.env}
     environment:
       AGENT_STATE_DB: /data/agent-state.sqlite
       HOST: 0.0.0.0
@@ -40,6 +40,60 @@ services:
       - /tmp:size=16m,mode=1777
     volumes:
       - fastapi-state:/data
+
+  caddy-node:
+    profiles: ["node-https"]
+    image: caddy:2.10.2-alpine@sha256:4c6e91c6ed0e2fa03efd5b44747b625fec79bc9cd06ac5235a779726618e530d
+    depends_on:
+      node-agent:
+        condition: service_healthy
+    environment:
+      SAGE_AGENT_HTTPS_SITE: ${SAGE_AGENT_HTTPS_SITE:-localhost:8443}
+      SAGE_AGENT_UPSTREAM: node-agent:8080
+    entrypoint: ["/bin/sh", "/etc/caddy/run-caddy-unprivileged.sh"]
+    command: []
+    user: "${SAGE_AGENT_HTTPS_UID:-1000}:${SAGE_AGENT_HTTPS_GID:-1000}"
+    ports:
+      - "${SAGE_AGENT_HTTPS_PORT:-8443}:8443"
+    read_only: true
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: ["ALL"]
+    tmpfs:
+      - /tmp:rw,exec,size=64m,mode=1777
+    volumes:
+      - ./deploy/https/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./deploy/https/run-caddy-unprivileged.sh:/etc/caddy/run-caddy-unprivileged.sh:ro
+      - ${SAGE_AGENT_HTTPS_DATA_DIR:-./data/https}/caddy-data:/data
+      - ${SAGE_AGENT_HTTPS_DATA_DIR:-./data/https}/caddy-config:/config
+
+  caddy-fastapi:
+    profiles: ["fastapi-https"]
+    image: caddy:2.10.2-alpine@sha256:4c6e91c6ed0e2fa03efd5b44747b625fec79bc9cd06ac5235a779726618e530d
+    depends_on:
+      fastapi-agent:
+        condition: service_healthy
+    environment:
+      SAGE_AGENT_HTTPS_SITE: ${SAGE_AGENT_HTTPS_SITE:-localhost:8443}
+      SAGE_AGENT_UPSTREAM: fastapi-agent:8080
+    entrypoint: ["/bin/sh", "/etc/caddy/run-caddy-unprivileged.sh"]
+    command: []
+    user: "${SAGE_AGENT_HTTPS_UID:-1000}:${SAGE_AGENT_HTTPS_GID:-1000}"
+    ports:
+      - "${SAGE_AGENT_HTTPS_PORT:-8443}:8443"
+    read_only: true
+    restart: unless-stopped
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: ["ALL"]
+    tmpfs:
+      - /tmp:rw,exec,size=64m,mode=1777
+    volumes:
+      - ./deploy/https/Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./deploy/https/run-caddy-unprivileged.sh:/etc/caddy/run-caddy-unprivileged.sh:ro
+      - ${SAGE_AGENT_HTTPS_DATA_DIR:-./data/https}/caddy-data:/data
+      - ${SAGE_AGENT_HTTPS_DATA_DIR:-./data/https}/caddy-config:/config
 
 volumes:
   node-state: {}

@@ -1,0 +1,25 @@
+{
+  "arguments": {
+    "input": [
+      {
+        "content": "Explain opportunity cost",
+        "role": "user"
+      }
+    ],
+    "instructions": "Teach one concept, then ask one check question.",
+    "model": "course-model",
+    "previous_response_id": "resp-previous"
+  },
+  "expected": {
+    "model": "course-model",
+    "instructions": "Teach one concept, then ask one check question.",
+    "input": [
+      {
+        "content": "Explain opportunity cost",
+        "role": "user"
+      }
+    ],
+    "previous_response_id": "resp-previous",
+    "stream": true
+  }
+}

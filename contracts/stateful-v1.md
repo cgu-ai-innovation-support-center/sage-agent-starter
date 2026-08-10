@@ -2,7 +2,7 @@
 
 Contract revision: `2026-08-10`
 
-This file is the public Agent-author contract for Starter release `v0.1.2`.
+This file is the public Agent-author contract for Starter release `v0.1.3`.
 The SAGE platform remains authoritative for authorization, Budgets, safe
 egress, canonical transcripts, and runtime enforcement.
 
@@ -55,6 +55,11 @@ authorized. Keep it in memory for that request, use only its `models`,
 or reuse it for background work. The Agent never receives the underlying
 Virtual Key or provider key. Require the proxy and Artifact lease URLs to match
 the exact operator-configured SAGE HTTPS origin before sending either token.
+
+The Agent may send its fixed local behavior text as the provider request's
+top-level `instructions`. It must forward SAGE's validated newest `input`
+unchanged rather than prepending instructions, reconstructing history, or
+changing the approval-result set.
 
 ## Artifacts and tools
 

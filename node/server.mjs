@@ -1,5 +1,6 @@
 import { timingSafeEqual } from "node:crypto";
 import { createServer } from "node:http";
+import { loadAgentProfile } from "./agent-profile.mjs";
 import {
   isPreviousResponseError,
   validateExternalArtifactUrl,
@@ -17,6 +18,7 @@ import {
   DurableResponseStreamGate,
   SqliteResponseStateStore,
 } from "./state-store.mjs";
+import { buildProviderRequest } from "./provider-request.mjs";
 
 const MAX_BODY_BYTES = 256_000;
 const MAX_UPSTREAM_BYTES = 8_000_000;
@@ -25,6 +27,7 @@ const RESPONSE_WRITE_TIMEOUT_MS = 60_000;
 const SHOWCASE_REASONING_HOLD_MS = 5_000;
 const listenHost = process.env.HOST?.trim() || "127.0.0.1";
 const listenPort = Number(process.env.PORT ?? "8080");
+const agentProfile = loadAgentProfile();
 
 if (!new Set(["127.0.0.1", "0.0.0.0"]).has(listenHost)) {
   throw new Error("HOST must be the literal 127.0.0.1 or 0.0.0.0");
@@ -156,6 +159,7 @@ state.prune();
 const server = createServer(async (request, response) => {
   const started = Date.now();
   let status = 500;
+  let streamOutcome = null;
   try {
     if (request.method === "GET" && request.url === "/healthz") {
       status = 204;
@@ -263,12 +267,12 @@ const server = createServer(async (request, response) => {
       },
       redirect: "error",
       signal: AbortSignal.any([abort.signal, AbortSignal.timeout(60_000)]),
-      body: JSON.stringify({
+      body: JSON.stringify(buildProviderRequest({
         model: required("AGENT_MODEL"),
+        instructions: agentProfile.instructions,
         input: contract.input,
-        ...(providerPrevious ? { previous_response_id: providerPrevious } : {}),
-        stream: true,
-      }),
+        previousResponseId: providerPrevious,
+      })),
     });
 
     if (!upstream.ok) {
@@ -286,6 +290,7 @@ const server = createServer(async (request, response) => {
     }
 
     status = 200;
+    streamOutcome = "incomplete";
     response.writeHead(status, {
       "cache-control": "no-store",
       "content-type": "text/event-stream",
@@ -300,6 +305,7 @@ const server = createServer(async (request, response) => {
       for (const frame of gate.push(chunk)) await writeFrame(response, frame);
     }
     const completion = gate.finish();
+    streamOutcome = completion.streamOutcome;
     for (const frame of completion.outputFrames) await writeFrame(response, frame);
     const terminalFrames = [];
     commitThenReleaseTerminal({
@@ -312,6 +318,7 @@ const server = createServer(async (request, response) => {
     response.end();
   } catch (error) {
     status = Number.isInteger(error?.status) ? error.status : 500;
+    if (response.headersSent && streamOutcome !== "completed") streamOutcome = "failed";
     if (!response.headersSent) {
       sendJson(response, status, {
         error: { code: status < 500 ? "request_rejected" : "agent_unavailable" },
@@ -325,6 +332,7 @@ const server = createServer(async (request, response) => {
       method: request.method,
       route: request.url?.split("?", 1)[0] ?? "unknown",
       status,
+      ...(streamOutcome ? { stream_outcome: streamOutcome } : {}),
     });
   }
 });

@@ -141,6 +141,7 @@ class SqliteResponseStateStore:
 class StreamCompletion:
     completed_response_id: str | None
     output_frames: tuple[bytes, ...]
+    stream_outcome: str
     terminal_frames: tuple[bytes, ...]
 
 
@@ -172,6 +173,13 @@ class DurableResponseStreamGate:
         return StreamCompletion(
             completed_response_id=self._completed_response_id,
             output_frames=tuple(output_frames),
+            stream_outcome=(
+                "completed"
+                if self._terminal_state == "completed"
+                else "failed"
+                if self._terminal_state == "failed"
+                else "incomplete"
+            ),
             terminal_frames=tuple(terminal_frames),
         )
 
