@@ -1,4 +1,5 @@
 import sys
+import shutil
 import tempfile
 import unittest
 from pathlib import Path
@@ -9,6 +10,7 @@ sys.path.insert(0, str(ROOT / "fastapi"))
 from state_store import (  # noqa: E402
     DurableResponseStreamGate,
     ORDINARY_RETENTION_SECONDS,
+    PENDING_RETENTION_SECONDS,
     SqliteResponseStateStore,
     commit_then_release_terminal,
 )
@@ -62,6 +64,129 @@ class StateStoreTests(unittest.TestCase):
                 )
             )
             store.close()
+
+    def test_pending_approval_restart_exact_set_and_replay(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = str(Path(directory) / "state.sqlite")
+            now = 1_800_000_000
+            actions = [
+                {
+                    "approval_request_id": f"mcpr-{suffix}",
+                    "arguments_json": f'{{"effect":"none","suffix":"{suffix}"}}',
+                    "server_label": "SAGE Starter demo",
+                    "tool_name": "preview_safe_course_hint",
+                }
+                for suffix in ("one", "two")
+            ]
+            first = SqliteResponseStateStore(path)
+            first.record_pending(
+                actions=actions,
+                conversation_id=self.conversation,
+                now=now,
+                provider_response_id="resp-provider-pending",
+                response_id="resp-pending",
+            )
+            first.close()
+
+            restarted = SqliteResponseStateStore(path)
+            self.assertTrue(
+                restarted.has_pending(self.conversation, "resp-pending", now)
+            )
+            self.assertIsNone(
+                restarted.consume_pending(
+                    conversation_id=self.conversation,
+                    now=now,
+                    responses=[
+                        {"approval_request_id": "mcpr-one", "approve": True}
+                    ],
+                    response_id="resp-pending",
+                    result_response_id="resp-result-missing",
+                )
+            )
+            self.assertIsNone(
+                restarted.consume_pending(
+                    conversation_id=self.conversation,
+                    now=now,
+                    responses=[
+                        {"approval_request_id": "mcpr-two", "approve": False},
+                        {"approval_request_id": "mcpr-one", "approve": True},
+                    ],
+                    response_id="resp-pending",
+                    result_response_id="resp-result-reordered",
+                )
+            )
+            consumed = restarted.consume_pending(
+                conversation_id=self.conversation,
+                now=now,
+                responses=[
+                    {"approval_request_id": "mcpr-one", "approve": True},
+                    {"approval_request_id": "mcpr-two", "approve": False},
+                ],
+                response_id="resp-pending",
+                result_response_id="resp-result",
+            )
+            self.assertEqual(consumed["provider_response_id"], "resp-provider-pending")
+            self.assertEqual(
+                [
+                    (item["approval_request_id"], item["approved"])
+                    for item in consumed["actions"]
+                ],
+                [("mcpr-one", True), ("mcpr-two", False)],
+            )
+            self.assertEqual(
+                restarted.resolve(self.conversation, "resp-result", now),
+                "resp-provider-pending",
+            )
+            self.assertIsNone(
+                restarted.consume_pending(
+                    conversation_id=self.conversation,
+                    now=now,
+                    responses=[
+                        {"approval_request_id": "mcpr-one", "approve": True},
+                        {"approval_request_id": "mcpr-two", "approve": False},
+                    ],
+                    response_id="resp-pending",
+                    result_response_id="resp-replay",
+                )
+            )
+            restarted.close()
+
+    def test_pending_expiry_and_backup_restore(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "state.sqlite"
+            backup = Path(directory) / "backup.sqlite"
+            restored_path = Path(directory) / "restored.sqlite"
+            now = 1_800_000_000
+            source = SqliteResponseStateStore(str(path))
+            source.record_pending(
+                actions=[
+                    {
+                        "approval_request_id": "mcpr-backup",
+                        "arguments_json": '{"effect":"none"}',
+                        "server_label": "SAGE Starter demo",
+                        "tool_name": "preview_safe_course_hint",
+                    }
+                ],
+                conversation_id=self.conversation,
+                now=now,
+                provider_response_id="resp-provider-backup",
+                response_id="resp-backup",
+            )
+            source.backup(str(backup))
+            source.close()
+            shutil.copyfile(backup, restored_path)
+            restored = SqliteResponseStateStore(str(restored_path))
+            self.assertTrue(
+                restored.has_pending(self.conversation, "resp-backup", now)
+            )
+            self.assertFalse(
+                restored.has_pending(
+                    self.conversation,
+                    "resp-backup",
+                    now + PENDING_RETENTION_SECONDS,
+                )
+            )
+            restored.close()
 
     def test_gate_commits_before_releasing_completion(self) -> None:
         gate = DurableResponseStreamGate()

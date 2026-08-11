@@ -27,4 +27,7 @@ document:
 5. bounded timeout, size, cost, and failure behavior;
 6. acceptance and misuse tests.
 
-The included tutor deliberately has no tools, files, RAG, or external data.
+The included tutor deliberately has no files, RAG, external data, or real
+domain tool. The exact `SAGE_APPROVAL_DEMO` runtime path is fixed validation
+infrastructure with `effect: none`; do not turn it into a real action inside
+the safe customization seam.

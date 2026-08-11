@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.1.4 - 2026-08-12
+
+- Add one exact-prompt, no-side-effect approval demonstration to both runtime
+  templates so a teacher can verify the real SAGE approval/result UI without
+  granting an external tool or data mutation.
+- Persist conversation-scoped pending actions for at least seven days, require
+  the complete ordered approval set, consume it once, reject replay, and keep
+  the provider continuation head usable after the local result.
+- Extend Node and FastAPI tests through restart, approve, deny, replay
+  rejection, backup/restore, and post-approval continuation.
+- Upgrade FastAPI, Starlette, and Uvicorn past the audited Starlette advisories,
+  then enforce SHA-256 hashes for every Python dependency artifact during the
+  container build.
+
 ## 0.1.3 - 2026-08-10
 
 - Add a coding-agent harness with task routing, architecture/code references,

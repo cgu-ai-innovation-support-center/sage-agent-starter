@@ -43,6 +43,7 @@ const requiredFiles = [
   "docs/zh-TW/quickstart.md",
   "fastapi/Dockerfile",
   "fastapi/agent_profile.py",
+  "fastapi/approval_demo.py",
   "fastapi/app.py",
   "fastapi/contract.py",
   "fastapi/provider_request.py",
@@ -52,6 +53,7 @@ const requiredFiles = [
   "harness/customization-policy.json",
   "node/Dockerfile",
   "node/agent-profile.mjs",
+  "node/approval-demo.mjs",
   "node/contract.mjs",
   "node/provider-request.mjs",
   "node/server.mjs",
@@ -65,10 +67,12 @@ const requiredFiles = [
   "scripts/verify-release.mjs",
   "tests/golden/provider-request.json",
   "tests/node/agent-profile.test.mjs",
+  "tests/node/approval-demo.test.mjs",
   "tests/node/contract.test.mjs",
   "tests/node/https-kit.test.mjs",
   "tests/node/state-store.test.mjs",
   "tests/python/test_agent_profile.py",
+  "tests/python/test_approval_demo.py",
   "tests/python/test_contract.py",
   "tests/python/test_state_store.py",
 ];
@@ -123,6 +127,7 @@ for (const locale of ["zh-TW", "en-US"]) {
   for (const heading of ["## 1.", "## 2.", "## 3.", "## 4.", "## 5."]) {
     requireCondition(quickstart.includes(heading), `${locale} quickstart is missing ${heading}`);
   }
+  requireCondition(quickstart.includes("SAGE_APPROVAL_DEMO"), `${locale} quickstart must include the durable approval rehearsal`);
   const privateHttps = readFileSync(new URL(`docs/${locale}/private-https.md`, root), "utf8");
   requireCondition(privateHttps.includes("sage-agent-trust.json"), `${locale} private HTTPS guide must name the public trust file`);
   requireCondition(privateHttps.includes("private-network") || privateHttps.includes("私有網路"), `${locale} private HTTPS guide must separate TLS trust from routing`);
@@ -145,6 +150,19 @@ requireCondition(compose.match(new RegExp(caddyReference.replace(/[.*+?^${}()|[\
 requireCondition(compose.includes("/caddy-data:/data") && compose.includes("/caddy-config:/config"), "Caddy state must use persistent bind mounts");
 requireCondition(!compose.includes("cap_add:") && !compose.includes("NET_BIND_SERVICE"), "every Starter container must run without added Linux capabilities");
 requireCondition(compose.match(/user: "\$\{SAGE_AGENT_HTTPS_UID:-1000\}:\$\{SAGE_AGENT_HTTPS_GID:-1000\}"/gu)?.length === 2, "both Caddy sidecars must use the generated non-root identity");
+const pythonRequirements = readFileSync(new URL("fastapi/requirements.txt", root), "utf8");
+const requirementStarts = [...pythonRequirements.matchAll(/^([a-z0-9-]+)==[^\n]+$/gmu)];
+requireCondition(requirementStarts.length >= 10, "Python lock must contain the resolved dependency set");
+for (const [index, match] of requirementStarts.entries()) {
+  const start = match.index ?? 0;
+  const end = requirementStarts[index + 1]?.index ?? pythonRequirements.length;
+  requireCondition(
+    pythonRequirements.slice(start, end).includes("--hash=sha256:"),
+    `Python lock is missing artifact hashes for ${match[1]}`,
+  );
+}
+const fastapiDockerfile = readFileSync(new URL("fastapi/Dockerfile", root), "utf8");
+requireCondition(fastapiDockerfile.includes("--require-hashes -r requirements.txt"), "FastAPI image must enforce the Python artifact hash lock");
 const caddyfile = readFileSync(new URL("deploy/https/Caddyfile", root), "utf8");
 requireCondition(caddyfile.includes("tls internal") && !caddyfile.includes("tls_insecure"), "Caddy must issue private-CA TLS without an insecure transport bypass");
 const caddyRunner = readFileSync(new URL("deploy/https/run-caddy-unprivileged.sh", root), "utf8");

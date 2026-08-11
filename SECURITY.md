@@ -23,6 +23,9 @@ forks are not production support commitments.
 - Keep SAGE model and Artifact leases in memory for the current request only.
 - Never log authorization headers, request bodies, prompts, lease objects,
   uploaded content, or provider responses.
+- Pending approval state is conversation-scoped and single-use. Keep fixed
+  action arguments bounded, never persist optional approval reasons, and never
+  treat the validation demo as authority for a real side effect.
 - Do not add a direct model-key or private-network fallback.
 - Terminate public traffic with HTTPS and retain SAGE's safe-egress checks.
 - Never set `rejectUnauthorized: false`, use an insecure certificate bypass,

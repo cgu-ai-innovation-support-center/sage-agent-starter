@@ -21,7 +21,8 @@ absolute path, parent traversal, symlink, or arbitrary runtime module.
 | `node/agent-profile.mjs` | Fixed-path profile/instructions loading and bounds |
 | `node/provider-request.mjs` | Builds the unchanged `stateful-v1` provider request plus top-level instructions |
 | `node/contract.mjs` | Exact public request and capability validation |
-| `node/state-store.mjs` | SQLite response mapping and durable terminal stream gate |
+| `node/state-store.mjs` | SQLite response/pending-action state and durable terminal stream gate |
+| `node/approval-demo.mjs` | Deterministic no-side-effect approval request/result frames and opaque IDs |
 | `node/showcase.mjs` | Platform-owned deterministic E2E fixture; not a teacher behavior seam |
 
 ## FastAPI template
@@ -32,7 +33,8 @@ absolute path, parent traversal, symlink, or arbitrary runtime module.
 | `fastapi/agent_profile.py` | Fixed-path profile/instructions loading and bounds |
 | `fastapi/provider_request.py` | Provider payload parity with Node |
 | `fastapi/contract.py` | Exact public request and capability validation |
-| `fastapi/state_store.py` | SQLite response mapping and durable terminal stream gate |
+| `fastapi/state_store.py` | SQLite response/pending-action state and durable terminal stream gate |
+| `fastapi/approval_demo.py` | Approval-demo parity with Node |
 
 ## HTTPS and deployment
 
@@ -51,3 +53,8 @@ Node and Python unit tests consume the same golden provider request under
 secret-shaped content, pinned actions/images, and all unit cases. The full
 smoke creates isolated Docker resources, never depends on GitHub Actions, and
 removes only the exact resources it created.
+
+The full smoke also creates a real pending approval in each container, restarts
+the runtime, approves once, rejects replay, continues from the resulting head,
+and exercises the denial branch. Unit tests separately copy/restore a clean
+SQLite backup and prove the pending checkpoint survives.

@@ -30,6 +30,12 @@ Both templates also read the same bounded fixed-path
 instructions, and acceptance prompts without adding files, tools, RAG, or a
 third runtime.
 
+Both runtimes include one fixed `SAGE_APPROVAL_DEMO` protocol rehearsal. It
+persists a no-side-effect pending action, survives restart, and exercises real
+approve/deny/result UI behavior. It cannot call a network service, read a file,
+or mutate application data when the approval is executed, and is not a general
+tool seam. The ordinary first-turn model response still uses SAGE model access.
+
 ## Fastest local check
 
 ```bash
@@ -95,6 +101,7 @@ Supported in v0.1:
 - Run-scoped `platform_proxy_v1` model access.
 - Run-scoped private image Artifact upload lease validation.
 - Restart-safe, conversation-scoped local SQLite state.
+- A restart-safe, replay-resistant, no-side-effect approval/result rehearsal.
 - Health/readiness endpoints, bounded requests/streams, container builds, and
   secret-safe operational logs.
 - A fixed-profile minimal course tutor and top-level provider `instructions`
@@ -108,8 +115,9 @@ Not included:
 - SAGE deployment, registration automation, public/private network routing,
   or managed production hosting.
 - A direct LiteLLM key, provider key, or private-network fallback.
-- Files, tools, RAG, LangGraph, or Agents SDK. Add them only after defining the
-  data, approval, operational, and verification boundaries.
+- Files, real/domain tools, RAG, LangGraph, or Agents SDK. Add them only after
+  defining the data, approval, operational, and verification boundaries. The
+  fixed approval demo is validation infrastructure, not a domain tool.
 
 ## Security and support
 

@@ -19,6 +19,14 @@ import {
   SqliteResponseStateStore,
 } from "./state-store.mjs";
 import { buildProviderRequest } from "./provider-request.mjs";
+import {
+  approvalDemoPendingAction,
+  approvalDemoRequestFrames,
+  approvalDemoResultFrames,
+  approvalRequestId,
+  approvalResultResponseId,
+  isApprovalDemoInput,
+} from "./approval-demo.mjs";
 
 const MAX_BODY_BYTES = 256_000;
 const MAX_UPSTREAM_BYTES = 8_000_000;
@@ -243,8 +251,55 @@ const server = createServer(async (request, response) => {
       body,
       required("SAGE_PLATFORM_ORIGIN"),
     );
+    const approvalContinuation = contract.input.every(
+      (item) => item?.type === "mcp_approval_response",
+    );
+    if (approvalContinuation) {
+      const responses = contract.input.map((item) => ({
+        approvalRequestId: item.approval_request_id,
+        approved: item.approve,
+      }));
+      const resultResponseId = approvalResultResponseId(
+        required("AGENT_INVOCATION_KEY", 32),
+        contract.conversationId,
+        contract.previous,
+        responses,
+      );
+      const consumed = state.consumePending({
+        conversationId: contract.conversationId,
+        responseId: contract.previous,
+        responses,
+        resultResponseId,
+      });
+      if (!consumed) {
+        status = 409;
+        continuationLost(response);
+        return;
+      }
+      status = 200;
+      streamOutcome = "completed";
+      response.writeHead(status, {
+        "cache-control": "no-store",
+        "content-type": "text/event-stream",
+      });
+      for (const frame of approvalDemoResultFrames({
+        actions: consumed.actions,
+        responseId: resultResponseId,
+      })) {
+        await writeFrame(response, frame);
+      }
+      response.end();
+      return;
+    }
+
+    const approvalDemo = isApprovalDemoInput(contract.input);
     let providerPrevious;
     if (contract.previous) {
+      if (state.hasPending(contract.conversationId, contract.previous)) {
+        status = 409;
+        continuationLost(response);
+        return;
+      }
       providerPrevious = state.resolve(contract.conversationId, contract.previous);
       if (!providerPrevious) {
         status = 409;
@@ -308,12 +363,29 @@ const server = createServer(async (request, response) => {
     streamOutcome = completion.streamOutcome;
     for (const frame of completion.outputFrames) await writeFrame(response, frame);
     const terminalFrames = [];
-    commitThenReleaseTerminal({
-      completion,
-      conversationId: contract.conversationId,
-      state,
-      write: (frame) => terminalFrames.push(frame),
-    });
+    if (approvalDemo && completion.completedResponseId) {
+      const action = approvalDemoPendingAction(approvalRequestId(
+        required("AGENT_INVOCATION_KEY", 32),
+        contract.conversationId,
+        completion.completedResponseId,
+      ));
+      state.recordPending({
+        actions: [action],
+        conversationId: contract.conversationId,
+        providerResponseId: completion.completedResponseId,
+      });
+      for (const frame of approvalDemoRequestFrames(action)) {
+        await writeFrame(response, frame);
+      }
+      terminalFrames.push(...completion.terminalFrames);
+    } else {
+      commitThenReleaseTerminal({
+        completion,
+        conversationId: contract.conversationId,
+        state,
+        write: (frame) => terminalFrames.push(frame),
+      });
+    }
     for (const frame of terminalFrames) await writeFrame(response, frame);
     response.end();
   } catch (error) {

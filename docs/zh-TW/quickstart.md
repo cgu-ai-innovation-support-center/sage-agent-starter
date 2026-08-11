@@ -32,7 +32,7 @@ npm run customization:check 與 npm run test:light，並列出仍需人工確認
 需要 Node.js 22.13 以上與 Python 3.12；執行：
 
 ```bash
-git clone --branch v0.1.3 --depth 1 https://github.com/cgu-ai-innovation-support-center/sage-agent-starter.git
+git clone --branch v0.1.4 --depth 1 https://github.com/cgu-ai-innovation-support-center/sage-agent-starter.git
 cd sage-agent-starter
 npm run doctor
 npm run test:light
@@ -94,11 +94,15 @@ docker compose --profile fastapi up --build
 3. 將 state volume 納入 backup/restore，演練 rollback。
 4. 在 SAGE 建立 Agent，填入 HTTPS Base URL 與獨立 invocation credential。
 5. 選擇 Responses API 與 platform model access。
-6. 測試第一回合、第二回合、restart 後續談、取消與 approval/result。
+6. 在新對話輸入 exact `SAGE_APPROVAL_DEMO`，確認 input 是 `effect: none`；
+   回答前先 restart runtime，再核准一次，確認結果明載無副作用且 replay 被
+   拒絕。另開新對話測試拒絕分支。這是固定驗收路徑，不是 domain tool。
+7. 測試一般對話的第一、第二回合與取消。
 
 若收到 `previous_response_not_found`，建立新對話；不要重新傳送完整歷史。
 
 登錄前在本機執行 `npm run test:full`；它會建置並啟動兩個 reference image，
-完成 HTTP 與 private-CA TLS smoke。教師執行或部署 Agent 不需要 GitHub
+完成 HTTP、restart-safe approval、backup/restore unit 與 private-CA TLS
+smoke。教師執行或部署 Agent 不需要 GitHub
 Actions，也不依賴 CI 額度。若公信憑證不方便，可使用
 [Private HTTPS 教學](private-https.md)。

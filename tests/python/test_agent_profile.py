@@ -17,7 +17,11 @@ class AgentProfileTests(unittest.TestCase):
         profile = load_agent_profile()
         self.assertEqual(profile["id"], "minimal-course-tutor")
         normalized = " ".join(profile["instructions"].split())
-        self.assertIn("no files, retrieval, tools, or external data", normalized)
+        self.assertIn(
+            "no files, retrieval, external tools, or external data", normalized
+        )
+        self.assertIn("SAGE_APPROVAL_DEMO", normalized)
+        self.assertIn("no-side-effect", normalized)
 
     def test_rejects_extra_keys_and_instruction_symlink(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

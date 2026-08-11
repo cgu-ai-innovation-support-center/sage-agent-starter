@@ -8,9 +8,9 @@ recovery.
 ## Container
 
 ```bash
-docker build --pull -f node/Dockerfile -t my-sage-agent:v0.1.3 .
+docker build --pull -f node/Dockerfile -t my-sage-agent:v0.1.4 .
 # or
-docker build --pull -f fastapi/Dockerfile -t my-sage-agent:v0.1.3 .
+docker build --pull -f fastapi/Dockerfile -t my-sage-agent:v0.1.4 .
 ```
 
 Run as a non-root user, drop all capabilities, use a read-only filesystem, and
@@ -32,9 +32,12 @@ private-network routing remain separate controls.
 ## State, backup, and scale
 
 The SQLite adapter supports local development and a persistent shared volume
-on one host. Use a WAL-aware consistent backup that protects the database and
-its `-wal` and `-shm` state. Implement a shared database adapter before a
-multi-host deployment; do not fall back to memory.
+on one host. Use SQLite's online backup API, or stop the runtime cleanly and
+copy the closed database. Never copy only the live main file while WAL writes
+may still be pending. Restore into an isolated path first and run the ordinary
+continuation plus `SAGE_APPROVAL_DEMO` restart/approve/replay checks. Implement
+a shared database adapter before a multi-host deployment; do not fall back to
+memory.
 
 ## Rollback
 

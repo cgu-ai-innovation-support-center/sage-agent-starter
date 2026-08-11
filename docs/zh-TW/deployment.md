@@ -7,9 +7,9 @@ Starter 提供本機 Compose profiles 與 optional Private HTTPS kit，但不會
 ## Container
 
 ```bash
-docker build --pull -f node/Dockerfile -t my-sage-agent:v0.1.3 .
+docker build --pull -f node/Dockerfile -t my-sage-agent:v0.1.4 .
 # 或
-docker build --pull -f fastapi/Dockerfile -t my-sage-agent:v0.1.3 .
+docker build --pull -f fastapi/Dockerfile -t my-sage-agent:v0.1.4 .
 ```
 
 以非 root user 執行、drop all capabilities、使用 read-only filesystem，並
@@ -28,9 +28,11 @@ Starter 維護的選項是[每個 Agent 專屬的 Private HTTPS kit](private-htt
 
 ## State、備份與 scale
 
-SQLite adapter 適用於本機與單一主機共享持久化 volume。備份 SQLite 時要
-使用支援 WAL 的一致性方法，並同時保護 database、`-wal` 與 `-shm` state。
-多主機部署必須先實作共享 database adapter；不可 fallback 到 memory。
+SQLite adapter 適用於本機與單一主機共享持久化 volume。請使用 SQLite
+online backup API，或先正常停止 runtime 再複製已關閉的 database；WAL 仍在
+寫入時不可只複製 main file。先還原到隔離路徑，再測一般 continuation 與
+`SAGE_APPROVAL_DEMO` 的 restart／approve／replay。多主機部署必須先實作
+共享 database adapter；不可 fallback 到 memory。
 
 ## Rollback
 

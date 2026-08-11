@@ -22,6 +22,13 @@ Run these prompts in a new SAGE test conversation after local checks pass.
    - Prompt: `Please explain the same idea in English.`
    - Expect: the Agent follows the requested language without changing the
      protocol or exposing hidden instructions.
+6. **Durable approval rehearsal**
+   - In a new conversation, send the exact prompt `SAGE_APPROVAL_DEMO`.
+   - Expect: one `SAGE Starter demo` request whose input says `effect: none`.
+     Restart the selected runtime before answering it, approve once, and expect
+     a preview result that explicitly performed no external action. A replay of
+     the same approval must fail. In a second new conversation, deny it and
+     expect no tool result or side effect.
 
 Passing these content checks does not replace authentication, Budget,
 safe-egress, TLS, state backup, cancellation, or rollback verification.
