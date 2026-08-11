@@ -31,6 +31,14 @@ from state_store import (
     commit_then_release_terminal,
 )
 from provider_request import build_provider_request
+from approval_demo import (
+    approval_demo_pending_action,
+    approval_demo_request_frames,
+    approval_demo_result_frames,
+    approval_request_id,
+    approval_result_response_id,
+    is_approval_demo_input,
+)
 
 MAX_BODY_BYTES = 256_000
 MAX_UPSTREAM_BYTES = 8_000_000
@@ -191,8 +199,45 @@ async def responses(request: Request) -> StreamingResponse | JSONResponse:
     except ContractError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
+    approval_continuation = all(
+        isinstance(item, dict) and item.get("type") == "mcp_approval_response"
+        for item in items
+    )
+    if approval_continuation:
+        typed_responses = [item for item in items if isinstance(item, dict)]
+        result_response_id = approval_result_response_id(
+            required("AGENT_INVOCATION_KEY", 32),
+            conversation_id,
+            previous_response_id or "",
+            typed_responses,
+        )
+        consumed = state.consume_pending(
+            conversation_id=conversation_id,
+            response_id=previous_response_id or "",
+            responses=typed_responses,
+            result_response_id=result_response_id,
+        )
+        if consumed is None:
+            return continuation_lost()
+
+        async def approval_relay() -> AsyncIterator[bytes]:
+            for frame in approval_demo_result_frames(
+                consumed["actions"], result_response_id
+            ):
+                yield frame
+
+        return StreamingResponse(
+            approval_relay(),
+            media_type="text/event-stream",
+            headers={"cache-control": "no-store"},
+        )
+
+    approval_demo = is_approval_demo_input(items)
+
     provider_previous = None
     if previous_response_id is not None:
+        if state.has_pending(conversation_id, previous_response_id):
+            return continuation_lost()
         provider_previous = state.resolve(conversation_id, previous_response_id)
         if provider_previous is None:
             return continuation_lost()
@@ -269,12 +314,30 @@ async def responses(request: Request) -> StreamingResponse | JSONResponse:
             outcome = completion.stream_outcome
             for frame in completion.output_frames:
                 yield frame
-            for frame in commit_then_release_terminal(
-                completion=completion,
-                conversation_id=conversation_id,
-                state=state,
-            ):
-                yield frame
+            if approval_demo and completion.completed_response_id is not None:
+                action = approval_demo_pending_action(
+                    approval_request_id(
+                        required("AGENT_INVOCATION_KEY", 32),
+                        conversation_id,
+                        completion.completed_response_id,
+                    )
+                )
+                state.record_pending(
+                    actions=[action],
+                    conversation_id=conversation_id,
+                    provider_response_id=completion.completed_response_id,
+                )
+                for frame in approval_demo_request_frames(action):
+                    yield frame
+                for frame in completion.terminal_frames:
+                    yield frame
+            else:
+                for frame in commit_then_release_terminal(
+                    completion=completion,
+                    conversation_id=conversation_id,
+                    state=state,
+                ):
+                    yield frame
         except BaseException:
             outcome = "failed"
             raise

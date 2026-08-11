@@ -201,7 +201,7 @@ function runAgent({ image, name, network, platformCa, volume }) {
   resources.containers.push(name);
 }
 
-function sageRequest(content) {
+function sageRequest(input, previousResponseId) {
   const expiresAt = new Date(Date.now() + 5 * 60_000).toISOString();
   return {
     artifact_access: {
@@ -213,7 +213,7 @@ function sageRequest(content) {
       token: `af1.${"b".repeat(43)}`,
       upload_url: `${platformOrigin}/api/agents/artifacts`,
     },
-    input: [{ content, role: "user" }],
+    input,
     model: "agent",
     model_access: {
       base_url: `${platformOrigin}/api/agents/model-proxy/v1`,
@@ -221,26 +221,163 @@ function sageRequest(content) {
       mode: "platform_proxy_v1",
       token: providerKey,
     },
+    ...(previousResponseId ? { previous_response_id: previousResponseId } : {}),
     stream: true,
   };
 }
 
-async function invokeAgent(port, content, authorization = `Bearer ${invocationKey}`) {
+async function invokeAgent(port, {
+  authorization = `Bearer ${invocationKey}`,
+  content,
+  conversationId = randomUUID(),
+  input,
+  previousResponseId,
+}) {
+  const requestInput = input ?? [{ content, role: "user" }];
   const response = await fetch(hostUrl("http", port, "/v1/responses"), {
     method: "POST",
     headers: {
       ...(authorization ? { authorization } : {}),
       "content-type": "application/json",
-      "x-sage-conversation-id": randomUUID(),
+      "x-sage-conversation-id": conversationId,
       "x-sage-responses-profile": "stateful-v1",
     },
-    body: JSON.stringify(sageRequest(content)),
+    body: JSON.stringify(sageRequest(requestInput, previousResponseId)),
     redirect: "error",
     signal: AbortSignal.timeout(30_000),
   });
   const body = await response.text();
   if (body.length > 1_000_000) throw new Error("Agent smoke response was unexpectedly large");
   return { body, status: response.status };
+}
+
+function responseEvents(body) {
+  return body
+    .split(/\n\n/u)
+    .map((frame) => frame
+      .split(/\r?\n/u)
+      .filter((line) => line.startsWith("data:"))
+      .map((line) => line.slice(5).trimStart())
+      .join("\n"))
+    .filter((data) => data && data !== "[DONE]")
+    .map((data) => JSON.parse(data));
+}
+
+function completedResponseId(events) {
+  return events.findLast((event) => event.type === "response.completed")?.response?.id;
+}
+
+async function exerciseApprovalDemo(label, container, port) {
+  let activePort = port;
+  const conversationId = randomUUID();
+  const requested = await invokeAgent(activePort, {
+    content: "SAGE_APPROVAL_DEMO",
+    conversationId,
+  });
+  const requestedEvents = responseEvents(requested.body);
+  const approval = requestedEvents.find(
+    (event) => event.type === "response.output_item.added" &&
+      event.item?.type === "mcp_approval_request",
+  )?.item;
+  const pendingResponseId = completedResponseId(requestedEvents);
+  if (
+    requested.status !== 200 ||
+    typeof approval?.id !== "string" ||
+    typeof pendingResponseId !== "string" ||
+    JSON.parse(approval.arguments).effect !== "none"
+  ) {
+    throw new Error(`${label} did not emit the bounded no-side-effect approval request`);
+  }
+
+  docker(["restart", container]);
+  activePort = mappedPort(container, 8080);
+  await waitForProbe(hostUrl("http", activePort, "/readyz"), 204, 60_000, container);
+  const approved = await invokeAgent(activePort, {
+    conversationId,
+    input: [{
+      approval_request_id: approval.id,
+      approve: true,
+      type: "mcp_approval_response",
+    }],
+    previousResponseId: pendingResponseId,
+  });
+  const approvedEvents = responseEvents(approved.body);
+  const resultResponseId = completedResponseId(approvedEvents);
+  if (
+    approved.status !== 200 ||
+    typeof resultResponseId !== "string" ||
+    !approvedEvents.some(
+      (event) => event.type === "response.output_item.done" &&
+        event.item?.type === "mcp_call" &&
+        event.item?.approval_request_id === approval.id &&
+        event.item?.output?.includes("No external action was performed"),
+    )
+  ) {
+    throw new Error(`${label} did not resume and complete the approved demo after restart`);
+  }
+
+  const replay = await invokeAgent(activePort, {
+    conversationId,
+    input: [{
+      approval_request_id: approval.id,
+      approve: true,
+      type: "mcp_approval_response",
+    }],
+    previousResponseId: pendingResponseId,
+  });
+  if (
+    replay.status !== 409 ||
+    !replay.body.includes("previous_response_not_found")
+  ) {
+    throw new Error(`${label} accepted a replayed approval decision`);
+  }
+
+  const continued = await invokeAgent(activePort, {
+    content: "Continue after the approval demo",
+    conversationId,
+    previousResponseId: resultResponseId,
+  });
+  if (
+    continued.status !== 200 ||
+    !continued.body.includes("SAGE_AGENT_E2E_OK") ||
+    !continued.body.includes("response.completed")
+  ) {
+    throw new Error(`${label} did not retain the ordinary provider head after the demo`);
+  }
+
+  const deniedConversationId = randomUUID();
+  const denyRequest = await invokeAgent(activePort, {
+    content: "SAGE_APPROVAL_DEMO",
+    conversationId: deniedConversationId,
+  });
+  const denyRequestEvents = responseEvents(denyRequest.body);
+  const denyApproval = denyRequestEvents.find(
+    (event) => event.type === "response.output_item.added" &&
+      event.item?.type === "mcp_approval_request",
+  )?.item;
+  const denyPrevious = completedResponseId(denyRequestEvents);
+  const denied = await invokeAgent(activePort, {
+    conversationId: deniedConversationId,
+    input: [{
+      approval_request_id: denyApproval?.id,
+      approve: false,
+      reason: "Not needed for this rehearsal",
+      type: "mcp_approval_response",
+    }],
+    previousResponseId: denyPrevious,
+  });
+  const deniedEvents = responseEvents(denied.body);
+  if (
+    denied.status !== 200 ||
+    !denied.body.includes("demonstration was denied") ||
+    deniedEvents.some(
+      (event) => event.type === "response.output_item.done" &&
+        event.item?.type === "mcp_call",
+    )
+  ) {
+    throw new Error(`${label} did not preserve the no-execution denial branch`);
+  }
+  process.stdout.write(`PASS  ${label} durable approval, restart, replay rejection, continuation, and denial\n`);
 }
 
 async function waitForNodeOutcome(container, outcome) {
@@ -263,12 +400,15 @@ async function waitForNodeOutcome(container, outcome) {
 
 async function exerciseAgent(label, container, port, includeNonSuccess = false) {
   for (const authorization of [null, "Bearer wrong-credential"]) {
-    const rejected = await invokeAgent(port, "auth negative", authorization);
+    const rejected = await invokeAgent(port, {
+      authorization,
+      content: "auth negative",
+    });
     if (rejected.status !== 401 || rejected.body.includes(invocationKey)) {
       throw new Error(`${label} did not return a generic 401 for invalid authorization`);
     }
   }
-  const success = await invokeAgent(port, "Explain opportunity cost");
+  const success = await invokeAgent(port, { content: "Explain opportunity cost" });
   if (success.status !== 200 || !success.body.includes("SAGE_AGENT_E2E_OK") || !success.body.includes("response.completed")) {
     const logs = docker(["logs", container], { allowFailure: true });
     const platformLogs = docker(["logs", `${prefix}-platform-caddy`], { allowFailure: true });
@@ -285,7 +425,7 @@ async function exerciseAgent(label, container, port, includeNonSuccess = false) 
     ["SAGE_FIXTURE_EARLY_DONE", "[DONE]", null, "failed"],
     ["SAGE_FIXTURE_NO_TERMINAL", "SAGE_FIXTURE_PARTIAL", null, "incomplete"],
   ]) {
-    const result = await invokeAgent(port, sentinel);
+    const result = await invokeAgent(port, { content: sentinel });
     if (result.status !== 200 || !result.body.includes(expectedBody) || (forbiddenBody && result.body.includes(forbiddenBody))) {
       throw new Error(`Node non-success stream regression failed for ${sentinel}`);
     }
@@ -302,6 +442,7 @@ async function smokeAgent(label, image, name, network, platformCa, includeNonSuc
   await waitForProbe(hostUrl("http", port, "/readyz"), 204, 60_000, name);
   process.stdout.write(`PASS  ${label} container startup, /healthz, and /readyz\n`);
   await exerciseAgent(label, name, port, includeNonSuccess);
+  await exerciseApprovalDemo(label, name, port);
 }
 
 async function smokeTls(nodeContainer, network) {

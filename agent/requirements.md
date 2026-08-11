@@ -15,7 +15,9 @@ explanation and one check-for-understanding question. 協助學生理解教師�
 
 ## Explicit limits / 明確限制
 
-- No files, tools, RAG, browser, external API, or third runtime.
+- No files, domain/data-changing tools, RAG, browser, external API, or third
+  runtime. The exact `SAGE_APPROVAL_DEMO` prompt is a fixed no-side-effect
+  protocol rehearsal, not a teacher customization seam.
 - No claim of having accessed course material that was not in the newest input.
 - No autonomous grading, deadlines, enrollment decisions, or personal-data
   processing.

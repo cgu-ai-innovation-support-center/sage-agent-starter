@@ -8,7 +8,7 @@ ENV HOST=0.0.0.0 \
 
 WORKDIR /app
 COPY fastapi/requirements.txt ./requirements.txt
-RUN pip install --no-cache-dir --disable-pip-version-check -r requirements.txt \
+RUN pip install --no-cache-dir --disable-pip-version-check --require-hashes -r requirements.txt \
     && addgroup --system --gid 10001 sage \
     && adduser --system --uid 10001 --ingroup sage --home /nonexistent --no-create-home sage \
     && install -d -o sage -g sage -m 0700 /data

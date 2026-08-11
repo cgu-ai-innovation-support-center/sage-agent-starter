@@ -2,12 +2,14 @@
 
 The Node template uses only Node.js standard-library APIs. The FastAPI
 template pins the following direct and transitive packages in
-`fastapi/requirements.txt`. License identifiers come from the installed wheel
-metadata for the v0.1.0 build; FastAPI declares MIT through its package
-classifier.
+`fastapi/requirements.txt`. Every resolved artifact has a SHA-256 hash and the
+container install uses `--require-hashes`. License identifiers come from the
+installed wheel metadata reviewed for the v0.1.4 build; FastAPI declares MIT
+through its package classifier.
 
 | Package | License |
 | --- | --- |
+| annotated-doc | MIT |
 | annotated-types | MIT |
 | anyio | MIT |
 | certifi | MPL-2.0 |
@@ -34,10 +36,10 @@ SBOM, advisories, and license material before changing its tag or digest.
 Re-resolve the complete dependency set and re-review its metadata, licenses,
 and vulnerabilities before each release.
 
-`fastapi/requirements.txt` is fully version-resolved but is not an
-artifact-hash lock. Do not describe it as `--require-hashes` reproducibility;
-generating and validating one lock that covers every supported container
-architecture remains a maintainer release task.
+`fastapi/requirements.txt` is fully version-resolved and hash-locked from the
+public package index for Python 3.12. Regenerate it from `requirements.in`,
+review the complete diff and licenses, run the vulnerability audit, and build
+every supported container architecture before changing a dependency.
 
 The Dockerfiles and Caddy sidecar pin official multi-platform image digests. A
 digest makes the selected image reproducible; it does not mean the image is

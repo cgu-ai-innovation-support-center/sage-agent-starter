@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
+import { copyFileSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -7,6 +7,7 @@ import {
   commitThenReleaseTerminal,
   DurableResponseStreamGate,
   ORDINARY_RETENTION_MS,
+  PENDING_RETENTION_MS,
   SqliteResponseStateStore,
 } from "../../node/state-store.mjs";
 
@@ -50,6 +51,154 @@ test("SQLite response state rejects memory and expires explicitly", () => {
     assert.equal(store.resolve(conversation, "resp-expiring", now), "resp-expiring");
     assert.equal(store.resolve(conversation, "resp-expiring", now + ORDINARY_RETENTION_MS), null);
     store.close();
+  } finally {
+    rmSync(directory, { force: true, recursive: true });
+  }
+});
+
+test("pending approvals survive restart, require the exact set, and are single-use", () => {
+  const directory = mkdtempSync(join(tmpdir(), "sage-agent-state-"));
+  const path = join(directory, "state.sqlite");
+  const now = 1_800_000_000_000;
+  const actions = ["one", "two"].map((suffix) => ({
+    approvalRequestId: `mcpr-${suffix}`,
+    argumentsJson: JSON.stringify({ effect: "none", suffix }),
+    serverLabel: "SAGE Starter demo",
+    toolName: "preview_safe_course_hint",
+  }));
+  try {
+    const first = new SqliteResponseStateStore(path);
+    first.recordPending({
+      actions,
+      conversationId: conversation,
+      now,
+      providerResponseId: "resp-provider-pending",
+      responseId: "resp-pending",
+    });
+    assert.equal(first.hasPending(conversation, "resp-pending", now), true);
+    first.close();
+
+    const restarted = new SqliteResponseStateStore(path);
+    assert.equal(restarted.hasPending(conversation, "resp-pending", now), true);
+    assert.equal(
+      restarted.consumePending({
+        conversationId: conversation,
+        now,
+        responses: [{ approvalRequestId: "mcpr-one", approved: true }],
+        responseId: "resp-pending",
+        resultResponseId: "resp-result-missing",
+      }),
+      null,
+    );
+    assert.equal(
+      restarted.consumePending({
+        conversationId: conversation,
+        now,
+        responses: [
+          { approvalRequestId: "mcpr-two", approved: false },
+          { approvalRequestId: "mcpr-one", approved: true },
+        ],
+        responseId: "resp-pending",
+        resultResponseId: "resp-result-reordered",
+      }),
+      null,
+    );
+    assert.equal(
+      restarted.consumePending({
+        conversationId: "22222222-2222-4222-8222-222222222222",
+        now,
+        responses: actions.map((action) => ({
+          approvalRequestId: action.approvalRequestId,
+          approved: true,
+        })),
+        responseId: "resp-pending",
+        resultResponseId: "resp-result-wrong-scope",
+      }),
+      null,
+    );
+
+    const consumed = restarted.consumePending({
+      conversationId: conversation,
+      now,
+      responses: [
+        { approvalRequestId: "mcpr-one", approved: true },
+        { approvalRequestId: "mcpr-two", approved: false },
+      ],
+      responseId: "resp-pending",
+      resultResponseId: "resp-result",
+    });
+    assert.deepEqual(
+      consumed?.actions.map(({ approvalRequestId, approved }) => ({
+        approvalRequestId,
+        approved,
+      })),
+      [
+        { approvalRequestId: "mcpr-one", approved: true },
+        { approvalRequestId: "mcpr-two", approved: false },
+      ],
+    );
+    assert.equal(consumed?.providerResponseId, "resp-provider-pending");
+    assert.equal(
+      restarted.resolve(conversation, "resp-result", now),
+      "resp-provider-pending",
+    );
+    assert.equal(restarted.hasPending(conversation, "resp-pending", now), false);
+    assert.equal(
+      restarted.consumePending({
+        conversationId: conversation,
+        now,
+        responses: [
+          { approvalRequestId: "mcpr-one", approved: true },
+          { approvalRequestId: "mcpr-two", approved: false },
+        ],
+        responseId: "resp-pending",
+        resultResponseId: "resp-replay",
+      }),
+      null,
+    );
+    restarted.close();
+  } finally {
+    rmSync(directory, { force: true, recursive: true });
+  }
+});
+
+test("pending approval expiry and SQLite backup restore remain explicit", () => {
+  const directory = mkdtempSync(join(tmpdir(), "sage-agent-state-"));
+  const path = join(directory, "state.sqlite");
+  const backupPath = join(directory, "backup.sqlite");
+  const restoredPath = join(directory, "restored.sqlite");
+  const now = 1_800_000_000_000;
+  const action = {
+    approvalRequestId: "mcpr-backup",
+    argumentsJson: '{"effect":"none"}',
+    serverLabel: "SAGE Starter demo",
+    toolName: "preview_safe_course_hint",
+  };
+  try {
+    const source = new SqliteResponseStateStore(path);
+    source.recordPending({
+      actions: [action],
+      conversationId: conversation,
+      now,
+      providerResponseId: "resp-provider-backup",
+      responseId: "resp-backup",
+    });
+    source.checkpoint();
+    source.close();
+    copyFileSync(path, backupPath);
+    copyFileSync(backupPath, restoredPath);
+
+    const restored = new SqliteResponseStateStore(restoredPath);
+    assert.equal(restored.hasPending(conversation, "resp-backup", now), true);
+    assert.equal(
+      restored.hasPending(
+        conversation,
+        "resp-backup",
+        now + PENDING_RETENTION_MS,
+      ),
+      false,
+    );
+    restored.close();
   } finally {
     rmSync(directory, { force: true, recursive: true });
   }

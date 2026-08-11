@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 ORDINARY_RETENTION_SECONDS = 30 * 24 * 60 * 60
+PENDING_RETENTION_SECONDS = 7 * 24 * 60 * 60
 GENERIC_FAILURE_FRAME = b'data: {"type":"response.failed"}\n\n'
 
 
@@ -55,6 +56,29 @@ class SqliteResponseStateStore:
             )
             self._database.execute(
                 "CREATE INDEX IF NOT EXISTS response_heads_expiry ON response_heads (retain_until_seconds)"
+            )
+            self._database.execute(
+                """
+                CREATE TABLE IF NOT EXISTS pending_actions (
+                    conversation_id TEXT NOT NULL,
+                    response_id TEXT NOT NULL,
+                    ordinal INTEGER NOT NULL CHECK (ordinal >= 0),
+                    approval_request_id TEXT NOT NULL,
+                    tool_name TEXT NOT NULL,
+                    server_label TEXT NOT NULL,
+                    arguments_json TEXT NOT NULL,
+                    created_at_seconds INTEGER NOT NULL,
+                    retain_until_seconds INTEGER NOT NULL,
+                    status TEXT NOT NULL CHECK (status IN ('pending', 'consumed')),
+                    approved INTEGER CHECK (approved IN (0, 1)),
+                    consumed_at_seconds INTEGER,
+                    PRIMARY KEY (conversation_id, response_id, approval_request_id),
+                    UNIQUE (conversation_id, response_id, ordinal)
+                ) STRICT
+                """
+            )
+            self._database.execute(
+                "CREATE INDEX IF NOT EXISTS pending_actions_expiry ON pending_actions (retain_until_seconds)"
             )
 
     def resolve(
@@ -121,12 +145,258 @@ class SqliteResponseStateStore:
                 (conversation, outer, provider, current, current + retention_seconds),
             )
 
+    def record_pending(
+        self,
+        *,
+        actions: list[dict[str, object]],
+        conversation_id: str,
+        provider_response_id: str,
+        response_id: str | None = None,
+        now: int | None = None,
+        retention_seconds: int = PENDING_RETENTION_SECONDS,
+    ) -> None:
+        current = int(time.time()) if now is None else now
+        if (
+            not isinstance(current, int)
+            or retention_seconds < PENDING_RETENTION_SECONDS
+            or not 1 <= len(actions) <= 256
+        ):
+            raise TypeError("pending approval state is invalid")
+        conversation = _bounded_id(conversation_id, "conversation_id")
+        provider = _bounded_id(provider_response_id, "provider_response_id")
+        outer = _bounded_id(response_id or provider, "response_id")
+        normalized: list[tuple[str, str, str, str]] = []
+        for action in actions:
+            approval_id = _bounded_id(
+                action.get("approval_request_id"), "approval_request_id"
+            )
+            tool_name = _bounded_id(action.get("tool_name"), "tool_name")
+            server_label = _bounded_id(action.get("server_label"), "server_label")
+            arguments_json = action.get("arguments_json")
+            if (
+                len(approval_id) > 200
+                or len(tool_name) > 200
+                or len(server_label) > 200
+                or not isinstance(arguments_json, str)
+                or len(arguments_json.encode()) > 16_384
+            ):
+                raise TypeError("pending action is invalid")
+            parsed = json.loads(arguments_json)
+            if not isinstance(parsed, dict):
+                raise TypeError("arguments_json must contain an object")
+            normalized.append(
+                (
+                    approval_id,
+                    tool_name,
+                    server_label,
+                    json.dumps(parsed, separators=(",", ":")),
+                )
+            )
+        if len({item[0] for item in normalized}) != len(normalized):
+            raise TypeError("pending approval IDs must be unique")
+        with self._lock, self._database:
+            self._database.execute(
+                """
+                INSERT INTO response_heads (
+                    conversation_id, response_id, provider_response_id,
+                    created_at_seconds, retain_until_seconds
+                ) VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT (conversation_id, response_id) DO UPDATE SET
+                    provider_response_id = excluded.provider_response_id,
+                    retain_until_seconds = MAX(
+                        response_heads.retain_until_seconds,
+                        excluded.retain_until_seconds
+                    )
+                """,
+                (
+                    conversation,
+                    outer,
+                    provider,
+                    current,
+                    current + ORDINARY_RETENTION_SECONDS,
+                ),
+            )
+            self._database.executemany(
+                """
+                INSERT INTO pending_actions (
+                    conversation_id, response_id, ordinal, approval_request_id,
+                    tool_name, server_label, arguments_json, created_at_seconds,
+                    retain_until_seconds, status
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')
+                """,
+                [
+                    (
+                        conversation,
+                        outer,
+                        ordinal,
+                        approval_id,
+                        tool_name,
+                        server_label,
+                        arguments_json,
+                        current,
+                        current + retention_seconds,
+                    )
+                    for ordinal, (
+                        approval_id,
+                        tool_name,
+                        server_label,
+                        arguments_json,
+                    ) in enumerate(normalized)
+                ],
+            )
+
+    def has_pending(
+        self, conversation_id: str, response_id: str, now: int | None = None
+    ) -> bool:
+        current = int(time.time()) if now is None else now
+        with self._lock:
+            row = self._database.execute(
+                """
+                SELECT 1
+                FROM pending_actions
+                WHERE conversation_id = ?
+                  AND response_id = ?
+                  AND status = 'pending'
+                  AND retain_until_seconds > ?
+                LIMIT 1
+                """,
+                (
+                    _bounded_id(conversation_id, "conversation_id"),
+                    _bounded_id(response_id, "response_id"),
+                    current,
+                ),
+            ).fetchone()
+            return row == (1,)
+
+    def consume_pending(
+        self,
+        *,
+        conversation_id: str,
+        response_id: str,
+        responses: list[dict[str, object]],
+        result_response_id: str,
+        now: int | None = None,
+    ) -> dict[str, object] | None:
+        current = int(time.time()) if now is None else now
+        if not isinstance(current, int) or not responses:
+            raise TypeError("approval responses are invalid")
+        conversation = _bounded_id(conversation_id, "conversation_id")
+        previous = _bounded_id(response_id, "response_id")
+        result = _bounded_id(result_response_id, "result_response_id")
+        normalized: list[tuple[str, bool]] = []
+        for response in responses:
+            approval_id = _bounded_id(
+                response.get("approval_request_id"), "approval_request_id"
+            )
+            approved = response.get("approve")
+            if len(approval_id) > 200 or not isinstance(approved, bool):
+                raise TypeError("approval response is invalid")
+            normalized.append((approval_id, approved))
+        with self._lock, self._database:
+            head = self._database.execute(
+                """
+                SELECT provider_response_id
+                FROM response_heads
+                WHERE conversation_id = ?
+                  AND response_id = ?
+                  AND retain_until_seconds > ?
+                """,
+                (conversation, previous, current),
+            ).fetchone()
+            rows = self._database.execute(
+                """
+                SELECT approval_request_id, tool_name, server_label, arguments_json
+                FROM pending_actions
+                WHERE conversation_id = ?
+                  AND response_id = ?
+                  AND status = 'pending'
+                  AND retain_until_seconds > ?
+                ORDER BY ordinal
+                """,
+                (conversation, previous, current),
+            ).fetchall()
+            if (
+                head is None
+                or len(rows) != len(normalized)
+                or any(row[0] != normalized[index][0] for index, row in enumerate(rows))
+            ):
+                return None
+            for approval_id, approved in normalized:
+                updated = self._database.execute(
+                    """
+                    UPDATE pending_actions
+                    SET status = 'consumed', approved = ?, consumed_at_seconds = ?
+                    WHERE conversation_id = ?
+                      AND response_id = ?
+                      AND approval_request_id = ?
+                      AND status = 'pending'
+                    """,
+                    (
+                        int(approved),
+                        current,
+                        conversation,
+                        previous,
+                        approval_id,
+                    ),
+                )
+                if updated.rowcount != 1:
+                    raise RuntimeError("pending approval changed concurrently")
+            self._database.execute(
+                """
+                INSERT INTO response_heads (
+                    conversation_id, response_id, provider_response_id,
+                    created_at_seconds, retain_until_seconds
+                ) VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT (conversation_id, response_id) DO UPDATE SET
+                    provider_response_id = excluded.provider_response_id,
+                    retain_until_seconds = MAX(
+                        response_heads.retain_until_seconds,
+                        excluded.retain_until_seconds
+                    )
+                """,
+                (
+                    conversation,
+                    result,
+                    head[0],
+                    current,
+                    current + ORDINARY_RETENTION_SECONDS,
+                ),
+            )
+            return {
+                "actions": [
+                    {
+                        "approval_request_id": row[0],
+                        "approved": normalized[index][1],
+                        "arguments_json": row[3],
+                        "server_label": row[2],
+                        "tool_name": row[1],
+                    }
+                    for index, row in enumerate(rows)
+                ],
+                "provider_response_id": str(head[0]),
+            }
+
     def prune(self, now: int | None = None) -> None:
         current = int(time.time()) if now is None else now
         with self._lock, self._database:
             self._database.execute(
                 "DELETE FROM response_heads WHERE retain_until_seconds <= ?", (current,)
             )
+            self._database.execute(
+                "DELETE FROM pending_actions WHERE retain_until_seconds <= ?",
+                (current,),
+            )
+
+    def backup(self, destination: str) -> None:
+        target_path = Path(destination).resolve()
+        target_path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        target = sqlite3.connect(target_path)
+        try:
+            with self._lock:
+                self._database.backup(target)
+        finally:
+            target.close()
+        os.chmod(target_path, 0o600)
 
     def ready(self) -> bool:
         with self._lock:

@@ -13,7 +13,7 @@ Caddy private HTTPS edge (optional Starter deployment kit)
   v
 Node server OR FastAPI server
   |-- reads fixed agent/profile.json + agent/instructions.md
-  |-- stores conversation-scoped response mappings in SQLite
+  |-- stores conversation-scoped response mappings and pending actions in SQLite
   `-- calls the exact SAGE model-proxy lease URL
 ```
 
@@ -49,11 +49,22 @@ terminal completion is withheld until its response mapping is durably stored.
 Failure, incomplete, early `[DONE]`, malformed, or missing terminal streams do
 not advance continuation state.
 
+The exact `SAGE_APPROVAL_DEMO` path appends one fixed no-side-effect approval
+request after the provider response has completed. The response mapping and
+pending action commit in one local transaction before the terminal frame is
+released. An approval continuation must match the complete stored order; its
+decision and next response mapping commit together before the local result is
+streamed. The result reuses the prior provider head, so the next ordinary turn
+remains stateful without replaying or reconstructing transcript history.
+
 ## State and scale
 
 SQLite is persistent and restart-safe for one host. The database and WAL state
 live on the selected persistent volume. Multi-host deployment requires one
 shared state adapter with equivalent constraints; memory fallback is forbidden.
+Ordinary mappings retain a 30-day minimum. Pending approval checkpoints retain
+a seven-day minimum and are single-use; the fixed demo does not persist the
+user's optional denial reason.
 
 ## Private HTTPS
 

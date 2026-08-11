@@ -36,7 +36,7 @@ Requirement: <paste the brief>
 Use Node.js 22.13 or newer and Python 3.12:
 
 ```bash
-git clone --branch v0.1.3 --depth 1 https://github.com/cgu-ai-innovation-support-center/sage-agent-starter.git
+git clone --branch v0.1.4 --depth 1 https://github.com/cgu-ai-innovation-support-center/sage-agent-starter.git
 cd sage-agent-starter
 npm run doctor
 npm run test:light
@@ -102,13 +102,17 @@ docker compose --profile fastapi up --build
 4. Create the Agent in SAGE with the HTTPS Base URL and a distinct invocation
    credential.
 5. Select Responses API and platform model access.
-6. Test first and second turns, continuation after restart, cancellation, and
-   an approval/result flow.
+6. In a new conversation send exact `SAGE_APPROVAL_DEMO`. Confirm its input is
+   `effect: none`, restart the runtime before answering, approve once, verify
+   the no-side-effect result and replay rejection, then test denial in another
+   new conversation. This fixed rehearsal is not a real/domain tool.
+7. Test first and second ordinary turns and cancellation.
 
 If SAGE receives `previous_response_not_found`, start a new conversation. Do
 not resend full history.
 
 Before registration, run `npm run test:full` locally. It builds and starts both
-reference images and verifies HTTP and private-CA TLS smoke. Teachers do not
+reference images and verifies HTTP, restart-safe approval, backup/restore unit,
+and private-CA TLS smoke. Teachers do not
 need GitHub Actions or CI quota to run or deploy the Agent. If a public
 certificate is inconvenient, use the [private HTTPS guide](private-https.md).

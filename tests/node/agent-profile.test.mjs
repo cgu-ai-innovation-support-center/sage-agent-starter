@@ -19,6 +19,7 @@ test("loads the bounded fixed-path minimal tutor profile", () => {
   const profile = loadAgentProfile();
   assert.equal(profile.id, "minimal-course-tutor");
   assert.match(profile.instructions, /no files,[\s\S]*external data/i);
+  assert.match(profile.instructions, /SAGE_APPROVAL_DEMO[\s\S]*no-side-effect/i);
 });
 
 test("rejects profile path drift, extra keys, and instruction symlinks", () => {

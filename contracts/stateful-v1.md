@@ -1,8 +1,8 @@
 # SAGE Responses profile: `stateful-v1`
 
-Contract revision: `2026-08-10`
+Contract revision: `2026-08-12`
 
-This file is the public Agent-author contract for Starter release `v0.1.3`.
+This file is the public Agent-author contract for Starter release `v0.1.4`.
 The SAGE platform remains authoritative for authorization, Budgets, safe
 egress, canonical transcripts, and runtime enforcement.
 
@@ -72,6 +72,13 @@ reasoning summaries and MCP approval/result lifecycle events, but the browser
 does not execute a returned function. External files may be exposed only as
 credential-free HTTPS `sage.artifact.link` events without userinfo, query, or
 fragment components, and remain untrusted links.
+
+The two templates include one exact `SAGE_APPROVAL_DEMO` validation path. It
+creates a fixed `effect: "none"` pending action, persists it before releasing
+the terminal response, requires the complete ordered decision set, consumes
+it once, and returns a local preview result without network, file, or data
+mutation. It is a protocol rehearsal, not a general tool executor. A denied
+decision executes nothing. Approval reasons are not persisted by the demo.
 
 ## Response and errors
 

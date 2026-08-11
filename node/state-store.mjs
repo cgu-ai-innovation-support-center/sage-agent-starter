@@ -3,6 +3,7 @@ import { dirname, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 
 export const ORDINARY_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
+export const PENDING_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
 const GENERIC_FAILURE_FRAME = `data: ${JSON.stringify({ type: "response.failed" })}\n\n`;
 
 function boundedId(value, name) {
@@ -25,6 +26,31 @@ function statePath(value) {
   return resolve(candidate);
 }
 
+function pendingAction(value) {
+  const approvalRequestId = boundedId(value?.approvalRequestId, "approvalRequestId");
+  if (approvalRequestId.length > 200) {
+    throw new TypeError("approvalRequestId must contain at most 200 characters");
+  }
+  const toolName = boundedId(value?.toolName, "toolName");
+  const serverLabel = boundedId(value?.serverLabel, "serverLabel");
+  if (toolName.length > 200 || serverLabel.length > 200) {
+    throw new TypeError("tool identity must contain at most 200 characters");
+  }
+  if (typeof value?.argumentsJson !== "string" || Buffer.byteLength(value.argumentsJson, "utf8") > 16_384) {
+    throw new TypeError("argumentsJson must be bounded JSON text");
+  }
+  const parsed = JSON.parse(value.argumentsJson);
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new TypeError("argumentsJson must contain an object");
+  }
+  return {
+    approvalRequestId,
+    argumentsJson: JSON.stringify(parsed),
+    serverLabel,
+    toolName,
+  };
+}
+
 export class SqliteResponseStateStore {
   constructor(path = process.env.AGENT_STATE_DB) {
     this.path = statePath(path);
@@ -45,6 +71,24 @@ export class SqliteResponseStateStore {
       ) STRICT;
       CREATE INDEX IF NOT EXISTS response_heads_expiry
         ON response_heads (retain_until_ms);
+      CREATE TABLE IF NOT EXISTS pending_actions (
+        conversation_id TEXT NOT NULL,
+        response_id TEXT NOT NULL,
+        ordinal INTEGER NOT NULL CHECK (ordinal >= 0),
+        approval_request_id TEXT NOT NULL,
+        tool_name TEXT NOT NULL,
+        server_label TEXT NOT NULL,
+        arguments_json TEXT NOT NULL,
+        created_at_ms INTEGER NOT NULL,
+        retain_until_ms INTEGER NOT NULL,
+        status TEXT NOT NULL CHECK (status IN ('pending', 'consumed')),
+        approved INTEGER CHECK (approved IN (0, 1)),
+        consumed_at_ms INTEGER,
+        PRIMARY KEY (conversation_id, response_id, approval_request_id),
+        UNIQUE (conversation_id, response_id, ordinal)
+      ) STRICT;
+      CREATE INDEX IF NOT EXISTS pending_actions_expiry
+        ON pending_actions (retain_until_ms);
     `);
     this.lookup = this.database.prepare(`
       SELECT provider_response_id, retain_until_ms
@@ -68,6 +112,9 @@ export class SqliteResponseStateStore {
     `);
     this.deleteExpired = this.database.prepare(`
       DELETE FROM response_heads WHERE retain_until_ms <= ?
+    `);
+    this.deleteExpiredPending = this.database.prepare(`
+      DELETE FROM pending_actions WHERE retain_until_ms <= ?
     `);
     this.health = this.database.prepare("SELECT 1 AS ready");
   }
@@ -105,8 +152,189 @@ export class SqliteResponseStateStore {
     );
   }
 
+  recordPending({
+    actions,
+    conversationId,
+    providerResponseId,
+    responseId = providerResponseId,
+    now = Date.now(),
+    retentionMs = PENDING_RETENTION_MS,
+  }) {
+    if (
+      !Number.isSafeInteger(now) ||
+      !Number.isSafeInteger(retentionMs) ||
+      retentionMs < PENDING_RETENTION_MS ||
+      !Array.isArray(actions) ||
+      actions.length < 1 ||
+      actions.length > 256
+    ) {
+      throw new TypeError("pending approval state is invalid");
+    }
+    const conversation = boundedId(conversationId, "conversationId");
+    const outer = boundedId(responseId, "responseId");
+    const provider = boundedId(providerResponseId, "providerResponseId");
+    const normalized = actions.map(pendingAction);
+    if (new Set(normalized.map((action) => action.approvalRequestId)).size !== normalized.length) {
+      throw new TypeError("pending approval IDs must be unique");
+    }
+    this.database.exec("BEGIN IMMEDIATE");
+    try {
+      this.upsert.run(
+        conversation,
+        outer,
+        provider,
+        now,
+        now + ORDINARY_RETENTION_MS,
+      );
+      const insert = this.database.prepare(`
+        INSERT INTO pending_actions (
+          conversation_id,
+          response_id,
+          ordinal,
+          approval_request_id,
+          tool_name,
+          server_label,
+          arguments_json,
+          created_at_ms,
+          retain_until_ms,
+          status
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')
+      `);
+      for (const [ordinal, action] of normalized.entries()) {
+        insert.run(
+          conversation,
+          outer,
+          ordinal,
+          action.approvalRequestId,
+          action.toolName,
+          action.serverLabel,
+          action.argumentsJson,
+          now,
+          now + retentionMs,
+        );
+      }
+      this.database.exec("COMMIT");
+    } catch (error) {
+      this.database.exec("ROLLBACK");
+      throw error;
+    }
+  }
+
+  hasPending(conversationId, responseId, now = Date.now()) {
+    return Boolean(this.database.prepare(`
+      SELECT 1 AS present
+      FROM pending_actions
+      WHERE conversation_id = ?
+        AND response_id = ?
+        AND status = 'pending'
+        AND retain_until_ms > ?
+      LIMIT 1
+    `).get(
+      boundedId(conversationId, "conversationId"),
+      boundedId(responseId, "responseId"),
+      now,
+    )?.present);
+  }
+
+  consumePending({
+    conversationId,
+    responseId,
+    responses,
+    resultResponseId,
+    now = Date.now(),
+  }) {
+    if (!Number.isSafeInteger(now) || !Array.isArray(responses) || responses.length < 1) {
+      throw new TypeError("approval responses are invalid");
+    }
+    const conversation = boundedId(conversationId, "conversationId");
+    const previous = boundedId(responseId, "responseId");
+    const result = boundedId(resultResponseId, "resultResponseId");
+    const normalizedResponses = responses.map((response) => {
+      const approvalRequestId = boundedId(response?.approvalRequestId, "approvalRequestId");
+      if (approvalRequestId.length > 200 || typeof response?.approved !== "boolean") {
+        throw new TypeError("approval response is invalid");
+      }
+      return { approvalRequestId, approved: response.approved };
+    });
+    this.database.exec("BEGIN IMMEDIATE");
+    let open = true;
+    const reject = () => {
+      this.database.exec("ROLLBACK");
+      open = false;
+      return null;
+    };
+    try {
+      const head = this.database.prepare(`
+        SELECT provider_response_id
+        FROM response_heads
+        WHERE conversation_id = ? AND response_id = ? AND retain_until_ms > ?
+      `).get(conversation, previous, now);
+      const rows = this.database.prepare(`
+        SELECT approval_request_id, tool_name, server_label, arguments_json
+        FROM pending_actions
+        WHERE conversation_id = ?
+          AND response_id = ?
+          AND status = 'pending'
+          AND retain_until_ms > ?
+        ORDER BY ordinal
+      `).all(conversation, previous, now);
+      if (
+        !head ||
+        rows.length !== normalizedResponses.length ||
+        rows.some((row, index) => row.approval_request_id !== normalizedResponses[index].approvalRequestId)
+      ) {
+        return reject();
+      }
+      const update = this.database.prepare(`
+        UPDATE pending_actions
+        SET status = 'consumed', approved = ?, consumed_at_ms = ?
+        WHERE conversation_id = ?
+          AND response_id = ?
+          AND approval_request_id = ?
+          AND status = 'pending'
+      `);
+      for (const response of normalizedResponses) {
+        const changed = update.run(
+          response.approved ? 1 : 0,
+          now,
+          conversation,
+          previous,
+          response.approvalRequestId,
+        );
+        if (changed.changes !== 1) return reject();
+      }
+      this.upsert.run(
+        conversation,
+        result,
+        head.provider_response_id,
+        now,
+        now + ORDINARY_RETENTION_MS,
+      );
+      this.database.exec("COMMIT");
+      open = false;
+      return {
+        actions: rows.map((row, index) => ({
+          approvalRequestId: row.approval_request_id,
+          approved: normalizedResponses[index].approved,
+          argumentsJson: row.arguments_json,
+          serverLabel: row.server_label,
+          toolName: row.tool_name,
+        })),
+        providerResponseId: head.provider_response_id,
+      };
+    } catch (error) {
+      if (open) this.database.exec("ROLLBACK");
+      throw error;
+    }
+  }
+
   prune(now = Date.now()) {
     this.deleteExpired.run(now);
+    this.deleteExpiredPending.run(now);
+  }
+
+  checkpoint() {
+    this.database.exec("PRAGMA wal_checkpoint(TRUNCATE)");
   }
 
   ready() {
