@@ -7,9 +7,9 @@ Starter 提供本機 Compose profiles 與 optional Private HTTPS kit，但不會
 ## Container
 
 ```bash
-npm run image:build -- --runtime node --tag my-sage-agent:v0.1.6
+npm run image:build -- --runtime node --tag my-sage-agent:v0.1.7
 # 或
-npm run image:build -- --runtime fastapi --tag my-sage-agent:v0.1.6
+npm run image:build -- --runtime fastapi --tag my-sage-agent:v0.1.7
 ```
 
 Maintained builder 會拒絕 dirty source tree，只把 committed files 匯出到暫時
@@ -17,7 +17,7 @@ Docker context，並驗證 image label。兩個 Dockerfile 也會拒絕缺少、
 不是 40 位十六進位的 revision。部署前驗證 built image：
 
 ```bash
-docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' my-sage-agent:v0.1.6
+docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' my-sage-agent:v0.1.7
 ```
 
 輸出必須等於 maintained builder 回報的 clean commit。

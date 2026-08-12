@@ -34,10 +34,15 @@ function git(cwd, args, encoding = "utf8") {
   });
 }
 
-function exactTreeEntries(sourceRoot, revision) {
-  const listed = git(sourceRoot, ["ls-tree", "-r", "-z", "--full-tree", revision], "buffer");
-  if (listed.status !== 0) throw new Error("could not inspect the exact source tree");
-  return listed.stdout.subarray(0, -1).toString("utf8").split("\0").map((record) => {
+export function parseExactTreeEntries(output) {
+  if (output.length === 0 || output[output.length - 1] !== 0) {
+    throw new Error("exact source tree output is incomplete");
+  }
+  const decoded = output.toString("utf8");
+  if (!Buffer.from(decoded, "utf8").equals(output)) {
+    throw new Error("exact source tree contains a non-UTF-8 path");
+  }
+  return decoded.slice(0, -1).split("\0").map((record) => {
     const match = record.match(/^([0-7]{6}) blob ([0-9a-f]{40})\t(.+)$/u);
     if (!match || !["100644", "100755"].includes(match[1])) {
       throw new Error("exact source tree contains an unsupported entry");
@@ -45,7 +50,7 @@ function exactTreeEntries(sourceRoot, revision) {
     const path = match[3];
     const components = path.split("/");
     if (
-      Buffer.from(record, "utf8").toString("utf8") !== record ||
+      !/^[A-Za-z0-9._/-]+$/u.test(path) ||
       path.startsWith("/") ||
       components.some((component) => component === "" || component === "." || component === "..")
     ) {
@@ -53,6 +58,12 @@ function exactTreeEntries(sourceRoot, revision) {
     }
     return { executable: match[1] === "100755", object: match[2], path };
   });
+}
+
+function exactTreeEntries(sourceRoot, revision) {
+  const listed = git(sourceRoot, ["ls-tree", "-r", "-z", "--full-tree", revision], "buffer");
+  if (listed.status !== 0) throw new Error("could not inspect the exact source tree");
+  return parseExactTreeEntries(listed.stdout);
 }
 
 function exactBlob(sourceRoot, object) {

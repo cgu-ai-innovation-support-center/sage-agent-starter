@@ -36,7 +36,7 @@ Requirement: <paste the brief>
 Use Node.js 22.13 or newer and Python 3.12:
 
 ```bash
-git clone --branch v0.1.6 --depth 1 https://github.com/cgu-ai-innovation-support-center/sage-agent-starter.git
+git clone --branch v0.1.7 --depth 1 https://github.com/cgu-ai-innovation-support-center/sage-agent-starter.git
 cd sage-agent-starter
 npm run doctor
 npm run test:light

@@ -1,9 +1,14 @@
 # Changelog
 
+## 0.1.7 - 2026-08-12
+
+- Reject a Git tree whose path bytes cannot be represented exactly as portable
+  UTF-8 before materializing the OCI build context.
+
 ## 0.1.6 - 2026-08-12
 
 - Build maintained Node and FastAPI images only from a temporary context
-  exported from the clean Git index, excluding ignored worktree files.
+  exported from the clean committed Git tree, excluding ignored worktree files.
 - Isolate source revision checks from ambient Git repository-selection
   variables, and route documented image and Compose builds through the exact
   source exporter.
