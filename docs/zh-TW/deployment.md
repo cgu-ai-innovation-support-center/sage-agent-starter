@@ -7,21 +7,20 @@ Starter 提供本機 Compose profiles 與 optional Private HTTPS kit，但不會
 ## Container
 
 ```bash
-test -z "$(git status --porcelain=v1 --untracked-files=all)" || { echo "請先 commit 預定建置的 source" >&2; exit 1; }
-export SAGE_AGENT_SOURCE_REVISION="$(git rev-parse HEAD)"
-docker build --pull --build-arg SAGE_AGENT_SOURCE_REVISION -f node/Dockerfile -t my-sage-agent:v0.1.5 .
+npm run image:build -- --runtime node --tag my-sage-agent:v0.1.6
 # 或
-docker build --pull --build-arg SAGE_AGENT_SOURCE_REVISION -f fastapi/Dockerfile -t my-sage-agent:v0.1.5 .
+npm run image:build -- --runtime fastapi --tag my-sage-agent:v0.1.6
 ```
 
-兩個 Dockerfile 都會拒絕缺少、全零或不是 40 位十六進位的 revision。部署前
-驗證 built image：
+Maintained builder 會拒絕 dirty source tree，只把 committed files 匯出到暫時
+Docker context，並驗證 image label。兩個 Dockerfile 也會拒絕缺少、全零或
+不是 40 位十六進位的 revision。部署前驗證 built image：
 
 ```bash
-docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' my-sage-agent:v0.1.5
+docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' my-sage-agent:v0.1.6
 ```
 
-輸出必須等於上面選定的 clean commit。
+輸出必須等於 maintained builder 回報的 clean commit。
 
 以非 root user 執行、drop all capabilities、使用 read-only filesystem，並
 只將 `/data` 掛載為持久化 volume。Secret 只能由 runtime secret store 注入。

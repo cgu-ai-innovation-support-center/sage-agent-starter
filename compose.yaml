@@ -2,7 +2,7 @@ services:
   node-agent:
     profiles: ["node", "node-https"]
     build:
-      context: .
+      context: ${SAGE_AGENT_BUILD_CONTEXT:-.}
       dockerfile: node/Dockerfile
       args:
         SAGE_AGENT_SOURCE_REVISION: ${SAGE_AGENT_SOURCE_REVISION:-}
@@ -25,7 +25,7 @@ services:
   fastapi-agent:
     profiles: ["fastapi", "fastapi-https"]
     build:
-      context: .
+      context: ${SAGE_AGENT_BUILD_CONTEXT:-.}
       dockerfile: fastapi/Dockerfile
       args:
         SAGE_AGENT_SOURCE_REVISION: ${SAGE_AGENT_SOURCE_REVISION:-}

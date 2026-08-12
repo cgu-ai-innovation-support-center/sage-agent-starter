@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.1.6 - 2026-08-12
+
+- Build maintained Node and FastAPI images only from a temporary context
+  exported from the clean Git index, excluding ignored worktree files.
+- Isolate source revision checks from ambient Git repository-selection
+  variables, and route documented image and Compose builds through the exact
+  source exporter.
+
 ## 0.1.5 - 2026-08-12
 
 - Report a locally configured Agent model as unverified until a real SAGE run

@@ -36,7 +36,7 @@ Requirement: <paste the brief>
 Use Node.js 22.13 or newer and Python 3.12:
 
 ```bash
-git clone --branch v0.1.5 --depth 1 https://github.com/cgu-ai-innovation-support-center/sage-agent-starter.git
+git clone --branch v0.1.6 --depth 1 https://github.com/cgu-ai-innovation-support-center/sage-agent-starter.git
 cd sage-agent-starter
 npm run doctor
 npm run test:light
@@ -91,15 +91,17 @@ Alternatively, start one hardened Compose profile. Node binds to
 `127.0.0.1:8080`; FastAPI binds to `127.0.0.1:8081`:
 
 ```bash
-test -z "$(git status --porcelain=v1 --untracked-files=all)" || { echo "commit the intended source before building" >&2; exit 1; }
-export SAGE_AGENT_SOURCE_REVISION="$(git rev-parse HEAD)"
-docker compose --profile node up --build
+npm run compose:up -- --profile node
 # or
-docker compose --profile fastapi up --build
+npm run compose:up -- --profile fastapi
 ```
 
-Both application images require the exact clean source commit and store it in
-the standard `org.opencontainers.image.revision` label.
+The maintained wrapper rejects a dirty source tree, isolates Git repository
+selection, exports only the committed index into the Docker build context, and
+stores that exact commit in the standard
+`org.opencontainers.image.revision` label. Routine `docker compose ps`,
+`logs`, `restart`, and `down` remain available without reconstructing build
+metadata.
 
 ## 5. Before registration
 

@@ -60,6 +60,8 @@ const requiredFiles = [
   "node/state-store.mjs",
   "package.json",
   "scripts/check-customization.mjs",
+  "scripts/build-image.mjs",
+  "scripts/compose-up.mjs",
   "scripts/doctor.mjs",
   "scripts/https-kit.mjs",
   "scripts/run-python-tests.mjs",
@@ -189,6 +191,10 @@ requireCondition(
   compose.match(/SAGE_AGENT_SOURCE_REVISION: \$\{SAGE_AGENT_SOURCE_REVISION:-\}/gu)?.length === 2,
   "both application Compose builds must pass a lifecycle-safe optional source revision",
 );
+requireCondition(
+  compose.match(/context: \$\{SAGE_AGENT_BUILD_CONTEXT:-\.\}/gu)?.length === 2,
+  "both application Compose builds must accept the maintained exact exported context",
+);
 const caddyfile = readFileSync(new URL("deploy/https/Caddyfile", root), "utf8");
 requireCondition(caddyfile.includes("tls internal") && !caddyfile.includes("tls_insecure"), "Caddy must issue private-CA TLS without an insecure transport bypass");
 const caddyRunner = readFileSync(new URL("deploy/https/run-caddy-unprivileged.sh", root), "utf8");
@@ -198,9 +204,25 @@ const releaseVerifier = readFileSync(new URL("scripts/verify-release.mjs", root)
 requireCondition(releaseVerifier.includes('"--full"'), "release verification must invoke the full local gate");
 const httpsKit = readFileSync(new URL("scripts/https-kit.mjs", root), "utf8");
 requireCondition(
-  httpsKit.includes("exactCleanSourceRevision(root)") &&
-    httpsKit.includes("SAGE_AGENT_SOURCE_REVISION: sourceRevision"),
-  "private HTTPS startup must inject the exact clean source revision into Compose",
+  httpsKit.includes("withExactSourceContext(root") &&
+    httpsKit.includes("SAGE_AGENT_BUILD_CONTEXT: context") &&
+    httpsKit.includes("SAGE_AGENT_SOURCE_REVISION: revision"),
+  "private HTTPS startup must build from the exact exported source revision",
+);
+const sourceRevision = readFileSync(new URL("scripts/source-revision.mjs", root), "utf8");
+requireCondition(
+  sourceRevision.includes('!name.toUpperCase().startsWith("GIT_")') &&
+    sourceRevision.includes('"ls-tree"') &&
+    sourceRevision.includes('"cat-file"') &&
+    sourceRevision.includes('GIT_NO_REPLACE_OBJECTS: "1"'),
+  "exact source export must isolate Git repository selection and materialize raw verified HEAD blobs",
+);
+const imageBuilder = readFileSync(new URL("scripts/build-image.mjs", root), "utf8");
+const composeUp = readFileSync(new URL("scripts/compose-up.mjs", root), "utf8");
+requireCondition(
+  imageBuilder.includes("withExactSourceContext(root") &&
+    composeUp.includes("withExactSourceContext(root"),
+  "maintained image and Compose builds must use the exact exported source context",
 );
 
 const listed = spawnSync("git", ["ls-files", "--cached", "--others", "--exclude-standard", "-z"], {

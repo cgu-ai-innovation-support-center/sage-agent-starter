@@ -15,13 +15,14 @@ import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { buildTrustBundle, verifyTlsEndpoint } from "./https-kit.mjs";
-import { exactCleanSourceRevision } from "./source-revision.mjs";
+import { createExactSourceContext } from "./source-revision.mjs";
 
 const root = new URL("../", import.meta.url);
 const nonce = `${process.pid}-${randomUUID().slice(0, 8)}`.toLowerCase();
 const prefix = `sage-starter-smoke-${nonce}`;
 const temporary = mkdtempSync(join(tmpdir(), `${prefix}-`));
 const resources = { containers: [], images: [], networks: [], volumes: [] };
+let exactSource = null;
 const invocationKey = `fixture-${"x".repeat(40)}`;
 const providerKey = `mp1.${"a".repeat(43)}`;
 const platformOrigin = "https://platform-fixture:9443";
@@ -495,11 +496,13 @@ function cleanup() {
   for (const volume of resources.volumes.reverse()) docker(["volume", "rm", volume], { allowFailure: true });
   for (const image of resources.images.reverse()) docker(["image", "rm", image], { allowFailure: true });
   rmSync(temporary, { force: true, recursive: true });
+  exactSource?.cleanup();
 }
 
 async function main() {
   docker(["info"]);
-  const sourceRevision = exactCleanSourceRevision(root);
+  exactSource = createExactSourceContext(root);
+  const { context: sourceContext, revision: sourceRevision } = exactSource;
   const envFile = join(temporary, "agent.env");
   writeFileSync(envFile, [
     `AGENT_INVOCATION_KEY=${invocationKey}`,
@@ -508,8 +511,9 @@ async function main() {
     "AGENT_STATE_DB=/data/agent-state.sqlite",
     "",
   ].join("\n"));
-  docker(["compose", "--profile", "node-https", "config", "--quiet"], {
+  docker(["compose", "-f", join(sourceContext, "compose.yaml"), "--project-directory", fileURLToPath(root), "--profile", "node-https", "config", "--quiet"], {
     env: {
+      SAGE_AGENT_BUILD_CONTEXT: sourceContext,
       SAGE_AGENT_ENV_FILE: envFile,
       SAGE_AGENT_HTTPS_DATA_DIR: join(temporary, "lifecycle-data"),
       SAGE_AGENT_HTTPS_GID: String(caddyGid),
@@ -522,15 +526,16 @@ async function main() {
   const missingRevisionBuild = docker([
     "build",
     "--build-arg", "SAGE_AGENT_SOURCE_REVISION=",
-    "-f", "node/Dockerfile",
-    ".",
+    "-f", join(sourceContext, "node/Dockerfile"),
+    sourceContext,
   ], { allowFailure: true });
   if (missingRevisionBuild.status === 0) {
     throw new Error("Node image build accepted a missing source revision");
   }
   process.stdout.write("PASS  Compose lifecycle renders without a build revision and image build rejects it\n");
-  docker(["compose", "--profile", "node-https", "config", "--quiet"], {
+  docker(["compose", "-f", join(sourceContext, "compose.yaml"), "--project-directory", fileURLToPath(root), "--profile", "node-https", "config", "--quiet"], {
     env: {
+      SAGE_AGENT_BUILD_CONTEXT: sourceContext,
       SAGE_AGENT_ENV_FILE: envFile,
       SAGE_AGENT_HTTPS_DATA_DIR: join(temporary, "compose-data"),
       SAGE_AGENT_HTTPS_GID: String(caddyGid),
@@ -548,9 +553,9 @@ async function main() {
     docker([
       "build", "--pull",
       "--build-arg", `SAGE_AGENT_SOURCE_REVISION=${sourceRevision}`,
-      "-f", dockerfile,
+      "-f", join(sourceContext, dockerfile),
       "-t", image,
-      ".",
+      sourceContext,
     ], { inherit: true });
     resources.images.push(image);
     verifyImageRevision(image, sourceRevision);

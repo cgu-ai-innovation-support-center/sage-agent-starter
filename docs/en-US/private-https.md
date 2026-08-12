@@ -29,10 +29,11 @@ npm run https:doctor
 
 `--start` builds the selected application, starts Caddy, persists its CA under
 ignored `data/https/`, and writes `sage-agent-trust.json`. Without `--start`,
-the setup command prints the exact Compose command; then run
-`npm run https:export` yourself.
-The build requires a clean committed source tree; `--start` derives and injects
-that exact commit for the application image's OCI revision label.
+the setup command writes only the configuration; rerun the same command with
+`--start`, then run `npm run https:export` yourself.
+The build requires a clean committed source tree; `--start` isolates Git
+repository selection, exports the committed index, and injects that exact
+commit for the application image's OCI revision label.
 
 The data path must be new or an existing Starter-created directory with its
 private-HTTPS marker and only the `caddy-data`/`caddy-config` top-level layout.
