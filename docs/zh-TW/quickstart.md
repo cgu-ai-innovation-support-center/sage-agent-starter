@@ -32,7 +32,7 @@ npm run customization:check 與 npm run test:light，並列出仍需人工確認
 需要 Node.js 22.13 以上與 Python 3.12；執行：
 
 ```bash
-git clone --branch v0.1.5 --depth 1 https://github.com/cgu-ai-innovation-support-center/sage-agent-starter.git
+git clone --branch v0.1.6 --depth 1 https://github.com/cgu-ai-innovation-support-center/sage-agent-starter.git
 cd sage-agent-starter
 npm run doctor
 npm run test:light
@@ -84,15 +84,15 @@ uvicorn --app-dir fastapi app:app --host 127.0.0.1 --port 8080
 `127.0.0.1:8080`，FastAPI 使用 `127.0.0.1:8081`：
 
 ```bash
-test -z "$(git status --porcelain=v1 --untracked-files=all)" || { echo "請先 commit 預定建置的 source" >&2; exit 1; }
-export SAGE_AGENT_SOURCE_REVISION="$(git rev-parse HEAD)"
-docker compose --profile node up --build
+npm run compose:up -- --profile node
 # 或
-docker compose --profile fastapi up --build
+npm run compose:up -- --profile fastapi
 ```
 
-兩個 application image 都要求 exact clean source commit，並將它寫入標準
-`org.opencontainers.image.revision` label。
+Maintained wrapper 會拒絕 dirty source tree、隔離 Git repository selection，
+只將 committed index 匯出到 Docker build context，再把該 exact commit 寫入
+標準 `org.opencontainers.image.revision` label。日常的
+`docker compose ps`、`logs`、`restart`、`down` 不必重建 build metadata。
 
 ## 5. 上線前檢查
 

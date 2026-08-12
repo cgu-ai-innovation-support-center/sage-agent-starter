@@ -26,9 +26,11 @@ npm run https:doctor
 
 `--start` 會建置選定的 app、啟動 Caddy，將 CA 持久化於已忽略的
 `data/https/`，並輸出 `sage-agent-trust.json`。若不加 `--start`，setup 只會
-列出精確 Compose 指令；啟動後再執行 `npm run https:export`。
-建置前必須先 commit 並保持 source tree clean；`--start` 會取得並注入該 exact
-commit，作為 application image 的 OCI revision label。
+寫入設定；請用相同參數加上 `--start` 重跑，啟動後再執行
+`npm run https:export`。
+建置前必須先 commit 並保持 source tree clean；`--start` 會隔離 Git
+repository selection、匯出 committed index，再注入該 exact commit，作為
+application image 的 OCI revision label。
 
 Data path 必須是新目錄，或 Starter 先前建立、帶有 private-HTTPS marker，且
 頂層只有 `caddy-data`/`caddy-config` 的專用目錄。Setup 會拒絕 `.`、repo、

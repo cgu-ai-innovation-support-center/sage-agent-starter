@@ -18,10 +18,10 @@ import {
 import { request as httpsRequest } from "node:https";
 import { isIP } from "node:net";
 import { homedir } from "node:os";
-import { basename, dirname, isAbsolute, resolve, sep } from "node:path";
+import { basename, dirname, isAbsolute, join, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
 import { spawnSync } from "node:child_process";
-import { exactCleanSourceRevision } from "./source-revision.mjs";
+import { withExactSourceContext } from "./source-revision.mjs";
 
 const root = realpathSync(new URL("../", import.meta.url));
 const TRUST_SCHEMA = "sage-agent-trust-v1";
@@ -569,23 +569,34 @@ function setup(options) {
   process.stdout.write(`Private CA data stays in ${dataDirectory}.\n`);
 
   if (options.get("--start")) {
-    const sourceRevision = exactCleanSourceRevision(root);
-    const result = spawnSync("docker", [
-      "compose",
-      "--env-file",
-      configPath,
-      "--profile",
-      `${profile}-https`,
-      "up",
-      "-d",
-      "--build",
-    ], {
-      cwd: root,
-      encoding: "utf8",
-      env: { ...process.env, SAGE_AGENT_SOURCE_REVISION: sourceRevision },
-      stdio: "inherit",
+    withExactSourceContext(root, ({ context, revision }) => {
+      const result = spawnSync("docker", [
+        "compose",
+        "-f",
+        join(context, "compose.yaml"),
+        "--project-directory",
+        root,
+        "--env-file",
+        configPath,
+        "--profile",
+        `${profile}-https`,
+        "up",
+        "-d",
+        "--build",
+      ], {
+        cwd: root,
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          SAGE_AGENT_BUILD_CONTEXT: context,
+          SAGE_AGENT_ENV_FILE: resolve(root, ".env"),
+          SAGE_AGENT_HTTPS_DATA_DIR: dataDirectory,
+          SAGE_AGENT_SOURCE_REVISION: revision,
+        },
+        stdio: "inherit",
+      });
+      requireCondition(result.status === 0, "Docker Compose private HTTPS startup failed");
     });
-    requireCondition(result.status === 0, "Docker Compose private HTTPS startup failed");
     const publicCaPath = caPath(dataDirectory);
     const deadline = Date.now() + 60_000;
     while (!existsSync(publicCaPath) && Date.now() < deadline) {
@@ -594,8 +605,7 @@ function setup(options) {
     requireCondition(existsSync(publicCaPath), "Caddy did not create its public CA before the deadline");
     exportTrust({ configPath, outputPath: pathOption(options.get("--output"), DEFAULT_TRUST_PATH) });
   } else {
-    process.stdout.write("Commit the intended source, then set SAGE_AGENT_SOURCE_REVISION to its exact commit.\n");
-    process.stdout.write(`Start with: test -z \"$(git status --porcelain=v1 --untracked-files=all)\" && SAGE_AGENT_SOURCE_REVISION=\"$(git rev-parse HEAD)\" docker compose --env-file ${configPath} --profile ${profile}-https up -d --build\n`);
+    process.stdout.write("Commit the intended source, then rerun this setup command with --start.\n");
     process.stdout.write("Then run npm run https:export and npm run https:doctor.\n");
   }
 }

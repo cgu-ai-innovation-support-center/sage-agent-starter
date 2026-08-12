@@ -1,6 +1,6 @@
 {
   "name": "@cgu-sage/agent-starter",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "private": true,
   "description": "Source-available starter templates for CGU SAGE self-hosted Agents",
   "type": "module",
@@ -10,6 +10,8 @@
   "scripts": {
     "customization:check": "node scripts/check-customization.mjs",
     "doctor": "node scripts/doctor.mjs",
+    "image:build": "node scripts/build-image.mjs",
+    "compose:up": "node scripts/compose-up.mjs",
     "https:doctor": "node scripts/https-kit.mjs doctor",
     "https:export": "node scripts/https-kit.mjs export",
     "https:setup": "node scripts/https-kit.mjs setup",

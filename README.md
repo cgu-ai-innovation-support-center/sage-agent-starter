@@ -57,11 +57,13 @@ same lightweight sensor. Teachers do not need that workflow, GitHub Actions,
 or CI quota to run or deploy an Agent.
 
 Before registration or release, run `npm run test:full`. It additionally builds
-and starts both reference containers, verifies that each image carries the
-exact clean source commit in `org.opencontainers.image.revision`, probes HTTP
+and starts both reference containers from a temporary committed-index export,
+verifies that each image carries that exact source commit in
+`org.opencontainers.image.revision`, probes HTTP
 health/readiness, and proves the pinned Caddy private-CA TLS handshake. Commit
 the intended source before this gate; a dirty tree cannot be represented by an
-exact Git revision. `npm test` is an alias for this full local gate.
+exact Git revision. Ignored worktree files are not part of the exported image
+context. `npm test` is an alias for this full local gate.
 
 Maintainers run `npm run release:verify` after creating an annotated release
 tag. It rejects a dirty worktree, a lightweight tag, or a tag that does not
