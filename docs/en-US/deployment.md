@@ -8,9 +8,9 @@ recovery.
 ## Container
 
 ```bash
-npm run image:build -- --runtime node --tag my-sage-agent:v0.1.6
+npm run image:build -- --runtime node --tag my-sage-agent:v0.1.7
 # or
-npm run image:build -- --runtime fastapi --tag my-sage-agent:v0.1.6
+npm run image:build -- --runtime fastapi --tag my-sage-agent:v0.1.7
 ```
 
 The maintained builder rejects a dirty source tree, exports only committed
@@ -19,7 +19,7 @@ Dockerfiles also reject a missing, all-zero, or non-40-hex revision. Verify the
 built image before deployment:
 
 ```bash
-docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' my-sage-agent:v0.1.6
+docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' my-sage-agent:v0.1.7
 ```
 
 The output must equal the clean commit reported by the maintained builder.

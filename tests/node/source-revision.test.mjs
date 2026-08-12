@@ -6,6 +6,7 @@ import { join } from "node:path";
 import test from "node:test";
 import {
   exactCleanSourceRevision,
+  parseExactTreeEntries,
   withExactSourceContext,
 } from "../../scripts/source-revision.mjs";
 
@@ -91,4 +92,15 @@ test("exact source context exports raw committed blobs without ignored files or 
   } finally {
     rmSync(directory, { force: true, recursive: true });
   }
+});
+
+test("exact source context rejects a Git tree with a non-UTF-8 path", () => {
+  const output = Buffer.concat([
+    Buffer.from(`100644 blob ${"a".repeat(40)}\t`, "ascii"),
+    Buffer.from([0xff, 0x00]),
+  ]);
+  assert.throws(
+    () => parseExactTreeEntries(output),
+    /exact source tree contains a non-UTF-8 path/,
+  );
 });

@@ -4,7 +4,7 @@ The Node template uses only Node.js standard-library APIs. The FastAPI
 template pins the following direct and transitive packages in
 `fastapi/requirements.txt`. Every resolved artifact has a SHA-256 hash and the
 container install uses `--require-hashes`. License identifiers come from the
-installed wheel metadata reviewed for the v0.1.6 build; FastAPI declares MIT
+installed wheel metadata reviewed for the v0.1.7 build; FastAPI declares MIT
 through its package classifier.
 
 | Package | License |
