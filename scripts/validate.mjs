@@ -186,8 +186,8 @@ for (const [name, dockerfile] of [
   );
 }
 requireCondition(
-  compose.match(/SAGE_AGENT_SOURCE_REVISION: \$\{SAGE_AGENT_SOURCE_REVISION:\?[^}]+\}/gu)?.length === 2,
-  "both application Compose builds must require an explicit source revision",
+  compose.match(/SAGE_AGENT_SOURCE_REVISION: \$\{SAGE_AGENT_SOURCE_REVISION:-\}/gu)?.length === 2,
+  "both application Compose builds must pass a lifecycle-safe optional source revision",
 );
 const caddyfile = readFileSync(new URL("deploy/https/Caddyfile", root), "utf8");
 requireCondition(caddyfile.includes("tls internal") && !caddyfile.includes("tls_insecure"), "Caddy must issue private-CA TLS without an insecure transport bypass");

@@ -5,7 +5,7 @@ services:
       context: .
       dockerfile: node/Dockerfile
       args:
-        SAGE_AGENT_SOURCE_REVISION: ${SAGE_AGENT_SOURCE_REVISION:?set SAGE_AGENT_SOURCE_REVISION to the exact clean source commit}
+        SAGE_AGENT_SOURCE_REVISION: ${SAGE_AGENT_SOURCE_REVISION:-}
     env_file: ${SAGE_AGENT_ENV_FILE:-.env}
     environment:
       AGENT_STATE_DB: /data/agent-state.sqlite
@@ -28,7 +28,7 @@ services:
       context: .
       dockerfile: fastapi/Dockerfile
       args:
-        SAGE_AGENT_SOURCE_REVISION: ${SAGE_AGENT_SOURCE_REVISION:?set SAGE_AGENT_SOURCE_REVISION to the exact clean source commit}
+        SAGE_AGENT_SOURCE_REVISION: ${SAGE_AGENT_SOURCE_REVISION:-}
     env_file: ${SAGE_AGENT_ENV_FILE:-.env}
     environment:
       AGENT_STATE_DB: /data/agent-state.sqlite

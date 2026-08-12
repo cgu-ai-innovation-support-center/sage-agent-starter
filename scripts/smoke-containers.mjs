@@ -511,6 +511,27 @@ async function main() {
   docker(["compose", "--profile", "node-https", "config", "--quiet"], {
     env: {
       SAGE_AGENT_ENV_FILE: envFile,
+      SAGE_AGENT_HTTPS_DATA_DIR: join(temporary, "lifecycle-data"),
+      SAGE_AGENT_HTTPS_GID: String(caddyGid),
+      SAGE_AGENT_HTTPS_PORT: "18443",
+      SAGE_AGENT_HTTPS_SITE: "localhost:8443",
+      SAGE_AGENT_HTTPS_UID: String(caddyUid),
+      SAGE_AGENT_SOURCE_REVISION: "",
+    },
+  });
+  const missingRevisionBuild = docker([
+    "build",
+    "--build-arg", "SAGE_AGENT_SOURCE_REVISION=",
+    "-f", "node/Dockerfile",
+    ".",
+  ], { allowFailure: true });
+  if (missingRevisionBuild.status === 0) {
+    throw new Error("Node image build accepted a missing source revision");
+  }
+  process.stdout.write("PASS  Compose lifecycle renders without a build revision and image build rejects it\n");
+  docker(["compose", "--profile", "node-https", "config", "--quiet"], {
+    env: {
+      SAGE_AGENT_ENV_FILE: envFile,
       SAGE_AGENT_HTTPS_DATA_DIR: join(temporary, "compose-data"),
       SAGE_AGENT_HTTPS_GID: String(caddyGid),
       SAGE_AGENT_HTTPS_PORT: "18443",
