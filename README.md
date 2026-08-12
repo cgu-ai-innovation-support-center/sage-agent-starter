@@ -46,6 +46,10 @@ npm run test:light
 If your system `python3` is older but Python 3.12 is installed separately, set
 `PYTHON=/path/to/python3.12` for both commands.
 
+When `AGENT_MODEL` is configured, doctor reports it as a warning: the local
+check can validate only that the alias is present and non-placeholder. Only a
+real SAGE run can verify that the selected Budget permits that exact alias.
+
 `npm run test:light` validates the compatibility and customization manifests,
 known exposure rules, pinned dependencies/actions, shared golden cases, and
 dependency-free Node/Python tests. A SHA-pinned maintainer PR workflow runs the
@@ -53,9 +57,11 @@ same lightweight sensor. Teachers do not need that workflow, GitHub Actions,
 or CI quota to run or deploy an Agent.
 
 Before registration or release, run `npm run test:full`. It additionally builds
-and starts both reference containers, probes HTTP health/readiness, and proves
-the pinned Caddy private-CA TLS handshake. `npm test` is an alias for this full
-local gate.
+and starts both reference containers, verifies that each image carries the
+exact clean source commit in `org.opencontainers.image.revision`, probes HTTP
+health/readiness, and proves the pinned Caddy private-CA TLS handshake. Commit
+the intended source before this gate; a dirty tree cannot be represented by an
+exact Git revision. `npm test` is an alias for this full local gate.
 
 Maintainers run `npm run release:verify` after creating an annotated release
 tag. It rejects a dirty worktree, a lightweight tag, or a tag that does not

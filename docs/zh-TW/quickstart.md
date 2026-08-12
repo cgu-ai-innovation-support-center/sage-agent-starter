@@ -32,7 +32,7 @@ npm run customization:check 與 npm run test:light，並列出仍需人工確認
 需要 Node.js 22.13 以上與 Python 3.12；執行：
 
 ```bash
-git clone --branch v0.1.4 --depth 1 https://github.com/cgu-ai-innovation-support-center/sage-agent-starter.git
+git clone --branch v0.1.5 --depth 1 https://github.com/cgu-ai-innovation-support-center/sage-agent-starter.git
 cd sage-agent-starter
 npm run doctor
 npm run test:light
@@ -44,6 +44,8 @@ cp .env.example .env
 不可重用。`SAGE_PLATFORM_ORIGIN` 只填 SAGE 的公開 HTTPS origin（例如
 `https://sage.example.edu`），不可帶路徑；Starter 只會把短效 lease 傳回
 這個 origin。
+載入 `.env` 後再執行 doctor 時，已設定的 `AGENT_MODEL` 仍會顯示 warning；
+只有真實 SAGE run 能確認所選 Budget 是否允許該 exact alias。
 
 ## 3. 選擇 template
 
@@ -82,10 +84,15 @@ uvicorn --app-dir fastapi app:app --host 127.0.0.1 --port 8080
 `127.0.0.1:8080`，FastAPI 使用 `127.0.0.1:8081`：
 
 ```bash
+test -z "$(git status --porcelain=v1 --untracked-files=all)" || { echo "請先 commit 預定建置的 source" >&2; exit 1; }
+export SAGE_AGENT_SOURCE_REVISION="$(git rev-parse HEAD)"
 docker compose --profile node up --build
 # 或
 docker compose --profile fastapi up --build
 ```
+
+兩個 application image 都要求 exact clean source commit，並將它寫入標準
+`org.opencontainers.image.revision` label。
 
 ## 5. 上線前檢查
 

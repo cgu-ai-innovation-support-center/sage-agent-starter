@@ -1,5 +1,12 @@
 FROM node:22.22.0-bookworm-slim@sha256:dd9d21971ec4395903fa6143c2b9267d048ae01ca6d3ea96f16cb30df6187d94
 
+ARG SAGE_AGENT_SOURCE_REVISION
+RUN case "${SAGE_AGENT_SOURCE_REVISION}" in \
+      ""|0000000000000000000000000000000000000000|*[!0-9a-f]*) exit 1 ;; \
+    esac \
+    && [ "${#SAGE_AGENT_SOURCE_REVISION}" -eq 40 ]
+LABEL org.opencontainers.image.revision="${SAGE_AGENT_SOURCE_REVISION}"
+
 ENV HOST=0.0.0.0 \
     PORT=8080 \
     AGENT_STATE_DB=/data/agent-state.sqlite \

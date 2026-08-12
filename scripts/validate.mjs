@@ -63,13 +63,16 @@ const requiredFiles = [
   "scripts/doctor.mjs",
   "scripts/https-kit.mjs",
   "scripts/run-python-tests.mjs",
+  "scripts/source-revision.mjs",
   "scripts/smoke-containers.mjs",
   "scripts/verify-release.mjs",
   "tests/golden/provider-request.json",
   "tests/node/agent-profile.test.mjs",
   "tests/node/approval-demo.test.mjs",
   "tests/node/contract.test.mjs",
+  "tests/node/doctor.test.mjs",
   "tests/node/https-kit.test.mjs",
+  "tests/node/source-revision.test.mjs",
   "tests/node/state-store.test.mjs",
   "tests/python/test_agent_profile.py",
   "tests/python/test_approval_demo.py",
@@ -163,6 +166,29 @@ for (const [index, match] of requirementStarts.entries()) {
 }
 const fastapiDockerfile = readFileSync(new URL("fastapi/Dockerfile", root), "utf8");
 requireCondition(fastapiDockerfile.includes("--require-hashes -r requirements.txt"), "FastAPI image must enforce the Python artifact hash lock");
+for (const [name, dockerfile] of [
+  ["Node", readFileSync(new URL("node/Dockerfile", root), "utf8")],
+  ["FastAPI", fastapiDockerfile],
+]) {
+  requireCondition(
+    dockerfile.includes("ARG SAGE_AGENT_SOURCE_REVISION"),
+    `${name} image must require the source revision build argument`,
+  );
+  requireCondition(
+    dockerfile.includes('LABEL org.opencontainers.image.revision="${SAGE_AGENT_SOURCE_REVISION}"'),
+    `${name} image must carry the standard OCI source revision label`,
+  );
+  requireCondition(
+    dockerfile.includes("0000000000000000000000000000000000000000") &&
+      dockerfile.includes("${#SAGE_AGENT_SOURCE_REVISION}") &&
+      dockerfile.includes("*[!0-9a-f]*"),
+    `${name} image must reject an empty, all-zero, or non-40-hex revision`,
+  );
+}
+requireCondition(
+  compose.match(/SAGE_AGENT_SOURCE_REVISION: \$\{SAGE_AGENT_SOURCE_REVISION:-\}/gu)?.length === 2,
+  "both application Compose builds must pass a lifecycle-safe optional source revision",
+);
 const caddyfile = readFileSync(new URL("deploy/https/Caddyfile", root), "utf8");
 requireCondition(caddyfile.includes("tls internal") && !caddyfile.includes("tls_insecure"), "Caddy must issue private-CA TLS without an insecure transport bypass");
 const caddyRunner = readFileSync(new URL("deploy/https/run-caddy-unprivileged.sh", root), "utf8");
@@ -170,6 +196,12 @@ requireCondition(caddyRunner.includes("cp /usr/bin/caddy /tmp/caddy-unprivileged
 
 const releaseVerifier = readFileSync(new URL("scripts/verify-release.mjs", root), "utf8");
 requireCondition(releaseVerifier.includes('"--full"'), "release verification must invoke the full local gate");
+const httpsKit = readFileSync(new URL("scripts/https-kit.mjs", root), "utf8");
+requireCondition(
+  httpsKit.includes("exactCleanSourceRevision(root)") &&
+    httpsKit.includes("SAGE_AGENT_SOURCE_REVISION: sourceRevision"),
+  "private HTTPS startup must inject the exact clean source revision into Compose",
+);
 
 const listed = spawnSync("git", ["ls-files", "--cached", "--others", "--exclude-standard", "-z"], {
   cwd: root,

@@ -15,6 +15,7 @@ import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { buildTrustBundle, verifyTlsEndpoint } from "./https-kit.mjs";
+import { exactCleanSourceRevision } from "./source-revision.mjs";
 
 const root = new URL("../", import.meta.url);
 const nonce = `${process.pid}-${randomUUID().slice(0, 8)}`.toLowerCase();
@@ -51,6 +52,17 @@ function docker(args, { inherit = false, allowFailure = false, env } = {}) {
     throw new Error(`docker ${args.join(" ")} failed`);
   }
   return result;
+}
+
+function verifyImageRevision(image, revision) {
+  const actual = docker([
+    "image", "inspect", "--format",
+    '{{ index .Config.Labels "org.opencontainers.image.revision" }}',
+    image,
+  ]).stdout.trim();
+  if (actual !== revision) {
+    throw new Error(`${image} OCI source revision ${JSON.stringify(actual)} does not match ${revision}`);
+  }
 }
 
 function mappedPort(container, port) {
@@ -487,6 +499,7 @@ function cleanup() {
 
 async function main() {
   docker(["info"]);
+  const sourceRevision = exactCleanSourceRevision(root);
   const envFile = join(temporary, "agent.env");
   writeFileSync(envFile, [
     `AGENT_INVOCATION_KEY=${invocationKey}`,
@@ -498,11 +511,33 @@ async function main() {
   docker(["compose", "--profile", "node-https", "config", "--quiet"], {
     env: {
       SAGE_AGENT_ENV_FILE: envFile,
+      SAGE_AGENT_HTTPS_DATA_DIR: join(temporary, "lifecycle-data"),
+      SAGE_AGENT_HTTPS_GID: String(caddyGid),
+      SAGE_AGENT_HTTPS_PORT: "18443",
+      SAGE_AGENT_HTTPS_SITE: "localhost:8443",
+      SAGE_AGENT_HTTPS_UID: String(caddyUid),
+      SAGE_AGENT_SOURCE_REVISION: "",
+    },
+  });
+  const missingRevisionBuild = docker([
+    "build",
+    "--build-arg", "SAGE_AGENT_SOURCE_REVISION=",
+    "-f", "node/Dockerfile",
+    ".",
+  ], { allowFailure: true });
+  if (missingRevisionBuild.status === 0) {
+    throw new Error("Node image build accepted a missing source revision");
+  }
+  process.stdout.write("PASS  Compose lifecycle renders without a build revision and image build rejects it\n");
+  docker(["compose", "--profile", "node-https", "config", "--quiet"], {
+    env: {
+      SAGE_AGENT_ENV_FILE: envFile,
       SAGE_AGENT_HTTPS_DATA_DIR: join(temporary, "compose-data"),
       SAGE_AGENT_HTTPS_GID: String(caddyGid),
       SAGE_AGENT_HTTPS_PORT: "18443",
       SAGE_AGENT_HTTPS_SITE: "localhost:8443",
       SAGE_AGENT_HTTPS_UID: String(caddyUid),
+      SAGE_AGENT_SOURCE_REVISION: sourceRevision,
     },
   });
   process.stdout.write("PASS  Compose HTTP/private-HTTPS profile renders\n");
@@ -510,9 +545,17 @@ async function main() {
   const nodeImage = `${prefix}-node:local`;
   const fastapiImage = `${prefix}-fastapi:local`;
   for (const [dockerfile, image] of [["node/Dockerfile", nodeImage], ["fastapi/Dockerfile", fastapiImage]]) {
-    docker(["build", "--pull", "-f", dockerfile, "-t", image, "."], { inherit: true });
+    docker([
+      "build", "--pull",
+      "--build-arg", `SAGE_AGENT_SOURCE_REVISION=${sourceRevision}`,
+      "-f", dockerfile,
+      "-t", image,
+      ".",
+    ], { inherit: true });
     resources.images.push(image);
+    verifyImageRevision(image, sourceRevision);
   }
+  process.stdout.write(`PASS  Node and FastAPI images carry exact OCI source revision ${sourceRevision}\n`);
 
   const network = `${prefix}-network`;
   docker(["network", "create", network]);

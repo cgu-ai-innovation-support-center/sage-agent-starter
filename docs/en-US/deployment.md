@@ -8,10 +8,21 @@ recovery.
 ## Container
 
 ```bash
-docker build --pull -f node/Dockerfile -t my-sage-agent:v0.1.4 .
+test -z "$(git status --porcelain=v1 --untracked-files=all)" || { echo "commit the intended source before building" >&2; exit 1; }
+export SAGE_AGENT_SOURCE_REVISION="$(git rev-parse HEAD)"
+docker build --pull --build-arg SAGE_AGENT_SOURCE_REVISION -f node/Dockerfile -t my-sage-agent:v0.1.5 .
 # or
-docker build --pull -f fastapi/Dockerfile -t my-sage-agent:v0.1.4 .
+docker build --pull --build-arg SAGE_AGENT_SOURCE_REVISION -f fastapi/Dockerfile -t my-sage-agent:v0.1.5 .
 ```
+
+Both Dockerfiles reject a missing, all-zero, or non-40-hex revision. Verify the
+built image before deployment:
+
+```bash
+docker image inspect --format '{{ index .Config.Labels "org.opencontainers.image.revision" }}' my-sage-agent:v0.1.5
+```
+
+The output must equal the clean commit selected above.
 
 Run as a non-root user, drop all capabilities, use a read-only filesystem, and
 mount only `/data` as persistent storage. Inject secrets only through the
