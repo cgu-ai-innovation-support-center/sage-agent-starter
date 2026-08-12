@@ -54,7 +54,9 @@ secret-shaped content, pinned actions/images, and all unit cases. The full
 smoke creates isolated Docker resources, never depends on GitHub Actions, and
 removes only the exact resources it created.
 
-The full smoke also creates a real pending approval in each container, restarts
+The full smoke requires a clean committed source tree, verifies that both
+application images carry that exact `org.opencontainers.image.revision`, then
+creates a real pending approval in each container, restarts
 the runtime, approves once, rejects replay, continues from the resulting head,
 and exercises the denial branch. Unit tests separately copy/restore a clean
 SQLite backup and prove the pending checkpoint survives.

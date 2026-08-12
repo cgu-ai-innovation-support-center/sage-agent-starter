@@ -36,7 +36,7 @@ Requirement: <paste the brief>
 Use Node.js 22.13 or newer and Python 3.12:
 
 ```bash
-git clone --branch v0.1.4 --depth 1 https://github.com/cgu-ai-innovation-support-center/sage-agent-starter.git
+git clone --branch v0.1.5 --depth 1 https://github.com/cgu-ai-innovation-support-center/sage-agent-starter.git
 cd sage-agent-starter
 npm run doctor
 npm run test:light
@@ -48,6 +48,9 @@ a conversation. The invocation credential and model/provider credentials are
 different secrets and must not be reused. Set `SAGE_PLATFORM_ORIGIN` to only
 the public HTTPS origin of SAGE (for example `https://sage.example.edu`), with
 no path. The Starter sends short-lived leases only back to that origin.
+If you load `.env` and rerun doctor, a configured `AGENT_MODEL` remains a
+warning: only a real SAGE run can verify that the selected Budget permits that
+exact alias.
 
 ## 3. Choose a template
 
@@ -88,10 +91,15 @@ Alternatively, start one hardened Compose profile. Node binds to
 `127.0.0.1:8080`; FastAPI binds to `127.0.0.1:8081`:
 
 ```bash
+test -z "$(git status --porcelain=v1 --untracked-files=all)" || { echo "commit the intended source before building" >&2; exit 1; }
+export SAGE_AGENT_SOURCE_REVISION="$(git rev-parse HEAD)"
 docker compose --profile node up --build
 # or
 docker compose --profile fastapi up --build
 ```
+
+Both application images require the exact clean source commit and store it in
+the standard `org.opencontainers.image.revision` label.
 
 ## 5. Before registration
 

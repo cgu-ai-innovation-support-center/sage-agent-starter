@@ -33,6 +33,11 @@ expanding this index.
   private keys, or student data.
 - Keep `agent/profile.json` and `agent/instructions.md` as the only default
   behavior customization seam shared by Node and FastAPI.
+- Treat a configured `AGENT_MODEL` as locally configured but unverified until
+  a real SAGE run confirms that the selected Budget permits the exact alias.
+- Build application images only from a clean, committed source tree and carry
+  that exact commit in `org.opencontainers.image.revision`; never substitute
+  an empty, all-zero, or dirty-HEAD guess.
 - Treat paths marked `review_required` in
   [`harness/customization-policy.json`](harness/customization-policy.json) as
   frozen for ordinary teacher customization.

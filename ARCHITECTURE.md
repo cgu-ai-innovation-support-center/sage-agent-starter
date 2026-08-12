@@ -80,7 +80,8 @@ normal certificate name verification and safe-egress controls.
 - `npm run test:light` validates tracked harness, exposure rules, shared
   golden cases, and dependency-free unit tests. Maintainer PR CI runs this.
 - `npm run test:full` additionally builds and starts both application images,
-  probes their HTTP health/readiness endpoints, and proves a private-CA TLS
-  handshake through the pinned Caddy image.
+  verifies their exact clean-source `org.opencontainers.image.revision`, probes
+  their HTTP health/readiness endpoints, and proves a private-CA TLS handshake
+  through the pinned Caddy image.
 - `npm run release:verify` requires a clean annotated release tag and invokes
   the full local gate. It is not a deployment command.

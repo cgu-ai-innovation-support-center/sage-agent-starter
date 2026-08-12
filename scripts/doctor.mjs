@@ -71,7 +71,7 @@ else if (invocationKey.length < 32 || invocationKey.includes("replace-with")) {
 const model = process.env.AGENT_MODEL?.trim();
 if (!model) warn("AGENT_MODEL is not loaded; this is expected before local run setup");
 else if (model.includes("replace-with")) fail("AGENT_MODEL is still a placeholder");
-else pass("Agent model alias");
+else warn("Agent model alias is configured locally; SAGE and the selected Budget have not verified access");
 
 const platformOrigin = process.env.SAGE_PLATFORM_ORIGIN?.trim();
 if (!platformOrigin) warn("SAGE_PLATFORM_ORIGIN is not loaded; this is expected before local run setup");

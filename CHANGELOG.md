@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.5 - 2026-08-12
+
+- Report a locally configured Agent model as unverified until a real SAGE run
+  confirms that the selected Budget permits the exact alias.
+- Require both application images to label the exact clean source commit with
+  `org.opencontainers.image.revision`, and verify it in the full local gate.
+
 ## 0.1.4 - 2026-08-12
 
 - Add one exact-prompt, no-side-effect approval demonstration to both runtime

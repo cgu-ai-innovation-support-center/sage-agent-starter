@@ -2,7 +2,7 @@
 
 Contract revision: `2026-08-12`
 
-This file is the public Agent-author contract for Starter release `v0.1.4`.
+This file is the public Agent-author contract for Starter release `v0.1.5`.
 The SAGE platform remains authoritative for authorization, Budgets, safe
 egress, canonical transcripts, and runtime enforcement.
 
